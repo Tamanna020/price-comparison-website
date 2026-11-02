@@ -1,8 +1,21 @@
 from src.services.product_service import (
     get_all_categories,
     get_all_brands,
+    get_all_stores,
+    get_all_skin_types,
+    get_all_product_types,
     get_products,
     get_product_by_id,
+    get_product_by_slug,
+    get_product_by_id_or_slug,
+)
+from src.database.price_history_service import (
+    get_product_price_history,
+    ProductPriceHistorySummary,
+)
+from src.services.alternative_service import (
+    get_cheapest_alternatives,
+    AlternativeRecommendation,
 )
 from src.services.comparison_service import (
     generate_comparison_summary,
@@ -61,13 +74,46 @@ from src.services.preference_service import (
     get_user_preferences,
     save_user_preferences,
     reset_user_preferences,
+    get_available_stores,
+    DEFAULT_SORT_PREFERENCE,
+    DEFAULT_PRIORITY,
+)
+from src.services.review_service import (
+    add_product_review,
+    get_product_reviews,
+    record_platform_rating,
+    get_platform_rating_breakdown,
+    calculate_weighted_review_score,
+    get_product_usage_guide,
+)
+from src.services.product_matching_service import (
+    ProductMatchResult,
+    MatchClassification,
+    parse_quantity_volume,
+    evaluate_product_match,
+    match_product_with_offer,
+)
+from src.services.deal_service import (
+    VerifiedBeautyDeal,
+    get_verified_beauty_deals,
+    calculate_deal_savings,
+    check_is_deal_expired,
 )
 
 __all__ = [
     "get_all_categories",
     "get_all_brands",
+    "get_all_stores",
+    "get_all_skin_types",
+    "get_all_product_types",
     "get_products",
     "get_product_by_id",
+    "get_product_by_slug",
+    "get_product_by_id_or_slug",
+    "get_product_price_history",
+    "ProductPriceHistorySummary",
+    "get_cheapest_alternatives",
+    "AlternativeRecommendation",
     "generate_comparison_summary",
     "build_price_history_dataframe",
     "AdvisorPreferences",
@@ -114,5 +160,23 @@ __all__ = [
     "get_user_preferences",
     "save_user_preferences",
     "reset_user_preferences",
+    "get_available_stores",
+    "DEFAULT_SORT_PREFERENCE",
+    "DEFAULT_PRIORITY",
+    "add_product_review",
+    "get_product_reviews",
+    "record_platform_rating",
+    "get_platform_rating_breakdown",
+    "calculate_weighted_review_score",
+    "get_product_usage_guide",
+    "ProductMatchResult",
+    "MatchClassification",
+    "parse_quantity_volume",
+    "evaluate_product_match",
+    "match_product_with_offer",
+    "VerifiedBeautyDeal",
+    "get_verified_beauty_deals",
+    "calculate_deal_savings",
+    "check_is_deal_expired",
 ]
 

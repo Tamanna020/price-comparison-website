@@ -31,8 +31,8 @@ from src.services.price_tracking_service import get_alert_history
 
 # Streamlit Page Configuration
 st.set_page_config(
-    page_title=f"{APP_NAME} - Shopping Intelligence",
-    page_icon="🏷️",
+    page_title=f"{APP_NAME} - Indian Beauty & Skincare Intelligence",
+    page_icon="✨",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -68,11 +68,11 @@ with st.sidebar:
     st.markdown(
         f"""
         <div style="padding: 10px 0 20px 0;">
-            <div style="font-size: 1.5rem; font-weight: 800; color: #0f172a; display: flex; align-items: center; gap: 8px;">
-                🏷️ {APP_NAME}
+            <div style="font-size: 1.45rem; font-weight: 800; color: #302724; display: flex; align-items: center; gap: 8px;">
+                ✨ {APP_NAME}
             </div>
-            <div style="font-size: 0.78rem; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px;">
-                Shopping Intelligence
+            <div style="font-size: 0.76rem; color: #78665f; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px;">
+                Indian Beauty Intelligence
             </div>
         </div>
         """,
@@ -196,6 +196,24 @@ with st.sidebar:
                         st.error(reg_msg)
 
     st.markdown("---")
+
+    # React Modern Frontend Portal
+    st.markdown(
+        """
+        <div style="background: linear-gradient(135deg, #FAF7F2 0%, #F5EAEB 100%); border: 1px solid #EED4D8; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+            <div style="font-size: 0.72rem; font-weight: 700; color: #4A1D2F; text-transform: uppercase; letter-spacing: 0.05em;">
+                ✨ Editorial Frontend
+            </div>
+            <div style="font-size: 0.8rem; color: #574d49; margin-top: 4px; margin-bottom: 8px;">
+                Experience the high-fashion React 19 UI with luxury typography & dupe comparisons.
+            </div>
+            <a href="http://localhost:5173" target="_blank" style="display: block; text-align: center; background: #4A1D2F; color: #FAF7F2; padding: 6px 12px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; text-decoration: none;">
+                Open PriceWise Beauty UI ↗
+            </a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # Demo Environment Management
     st.markdown(

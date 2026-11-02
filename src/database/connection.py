@@ -228,6 +228,10 @@ def migrate_db(custom_path: str | None = None) -> None:
                     SET user_id = (SELECT user_id FROM price_tracking WHERE price_tracking.id = price_alerts.tracking_id)
                     """
                 )
+            if "delivery_status" not in alerts_cols:
+                cursor.execute("ALTER TABLE price_alerts ADD COLUMN delivery_status TEXT DEFAULT 'in_app_delivered'")
+            if "channel" not in alerts_cols:
+                cursor.execute("ALTER TABLE price_alerts ADD COLUMN channel TEXT DEFAULT 'in_app'")
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tracking_user ON price_tracking(user_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tracking_product ON price_tracking(product_id)")
@@ -236,6 +240,143 @@ def migrate_db(custom_path: str | None = None) -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_tracking ON price_alerts(tracking_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_product ON price_alerts(product_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_alerts_is_read ON price_alerts(is_read)")
+
+        # 8. Phase 4: Product Reviews and Platform Rating Aggregations
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS product_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_id INTEGER NOT NULL,
+                platform TEXT NOT NULL,
+                reviewer_name TEXT NOT NULL,
+                rating REAL NOT NULL CHECK(rating >= 0 AND rating <= rating_scale),
+                rating_scale REAL DEFAULT 5.0,
+                title TEXT,
+                comment TEXT NOT NULL,
+                review_date TEXT,
+                verified_buyer INTEGER DEFAULT 0 CHECK(verified_buyer IN (0, 1)),
+                skin_type TEXT,
+                source_url TEXT,
+                data_status TEXT DEFAULT 'demo' CHECK(data_status IN ('demo', 'verified_retailer', 'manually_curated')),
+                external_review_id TEXT UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviews_product ON product_reviews(product_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviews_platform ON product_reviews(platform)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_reviews_rating ON product_reviews(rating)")
+
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS product_platform_ratings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_id INTEGER NOT NULL,
+                platform TEXT NOT NULL,
+                average_rating REAL,
+                review_count INTEGER,
+                rating_scale REAL DEFAULT 5.0,
+                data_source TEXT DEFAULT 'Retailer Feed (Demo)',
+                product_url TEXT,
+                last_verified TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+                UNIQUE(product_id, platform)
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_plat_ratings_product ON product_platform_ratings(product_id)")
+
+        # 9. Phase 6: Automatic Live Price Check Audit Logs
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS price_check_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_id INTEGER,
+                retailer_id TEXT NOT NULL,
+                retailer_name TEXT NOT NULL,
+                product_url TEXT,
+                canonical_url TEXT,
+                status TEXT NOT NULL CHECK(status IN ('retrieved', 'unavailable', 'unsupported', 'restricted', 'mismatch', 'error')),
+                listed_price REAL,
+                mrp REAL,
+                shipping_fee REAL,
+                coupon_code TEXT,
+                coupon_discount REAL,
+                total_cost REAL,
+                variant_detected TEXT,
+                match_classification TEXT,
+                checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT,
+                FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_check_logs_product ON price_check_logs(product_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_check_logs_retailer ON price_check_logs(retailer_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_check_logs_checked ON price_check_logs(checked_at)")
+
+        # 10. Phase 7: Personalized Beauty User Profiles
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                user_id INTEGER PRIMARY KEY,
+                display_name TEXT,
+                preferred_name TEXT,
+                skin_type TEXT DEFAULT 'unsure',
+                skin_concerns TEXT DEFAULT '[]',
+                preferred_categories TEXT DEFAULT '[]',
+                preferred_brands TEXT DEFAULT '[]',
+                min_budget REAL,
+                max_budget REAL,
+                makeup_preferences TEXT DEFAULT '[]',
+                ingredient_preferences TEXT DEFAULT '[]',
+                ingredient_avoidance TEXT DEFAULT '[]',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            """
+        )
+
+        # 11. Phase 7: User Skincare Routines (Morning & Evening)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_routines (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                routine_type TEXT NOT NULL CHECK(routine_type IN ('morning', 'evening', 'weekly', 'custom')),
+                title TEXT NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_routines_user ON user_routines(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_routines_type ON user_routines(user_id, routine_type)")
+
+        # 12. Phase 7: Routine Steps / Items
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_routine_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                routine_id INTEGER NOT NULL,
+                product_id INTEGER,
+                step_number INTEGER NOT NULL,
+                step_name TEXT NOT NULL,
+                custom_product_name TEXT,
+                usage_instructions TEXT,
+                precautions TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (routine_id) REFERENCES user_routines(id) ON DELETE CASCADE,
+                FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_routine_items_routine ON user_routine_items(routine_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_routine_items_step ON user_routine_items(routine_id, step_number)")
 
 
 def init_db(custom_path: str | None = None) -> None:

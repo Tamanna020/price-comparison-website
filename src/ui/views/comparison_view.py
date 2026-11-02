@@ -7,9 +7,16 @@ import streamlit as st
 from src.config import PRODUCT_IMAGE_FALLBACK
 from src.services.product_service import get_product_by_id, get_products
 from src.services.comparison_service import generate_comparison_summary
+from src.services.alternative_service import get_cheapest_alternatives
 from src.services.price_tracking_service import get_tracking_by_product_id
 from src.services.wishlist_service import is_in_wishlist, add_to_wishlist, remove_product_from_wishlist
 from src.analysis.deal_detector import analyze_product_deal
+from src.services.review_service import (
+    get_product_usage_guide,
+    calculate_weighted_review_score,
+    get_platform_rating_breakdown,
+    get_product_reviews,
+)
 from src.ui.components import (
     render_real_deal_detector,
     render_comparison_table,
@@ -201,3 +208,115 @@ def render_comparison_view():
         unsafe_allow_html=True,
     )
     render_price_history_chart(product, analysis, window=window_choice)
+
+    # 4. Cheapest Verified Alternatives (Phase 2)
+    alternatives = get_cheapest_alternatives(product, max_results=3)
+    if alternatives:
+        st.markdown(
+            """
+            <div style="margin-top: 28px; margin-bottom: 12px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+                <div style="font-size: 0.8rem; font-weight: 700; color: #C98991; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">
+                    ✨ Smart Alternative Intelligence
+                </div>
+                <h3 style="font-size: 1.3rem; font-weight: 800; color: #302724; margin: 0 0 6px 0;">
+                    Cheaper Verified Alternatives
+                </h3>
+                <p style="font-size: 0.88rem; color: #64748b; margin: 0;">
+                    Lower-priced beauty products with verified matching category, active ingredients, or formula profile. 
+                    <em>Recommendations are not claimed as clinically identical.</em>
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        for alt in alternatives:
+            alt_prod = alt.alternative_product
+            alt_sym = alt_prod.currency_symbol
+            with st.container():
+                st.markdown(
+                    f"""
+                    <div style="background: #ffffff; border: 1px solid #EED4D8; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+                            <div style="display: flex; gap: 14px; align-items: center;">
+                                <img src="{alt_prod.image_url or PRODUCT_IMAGE_FALLBACK}" alt="{alt_prod.title}" style="width: 64px; height: 64px; object-fit: contain; border-radius: 8px; border: 1px solid #f1f5f9; background: #FAF7F2; padding: 4px;" />
+                                <div>
+                                    <div style="font-size: 0.75rem; font-weight: 700; color: #C98991; text-transform: uppercase;">
+                                        {alt_prod.brand} • {alt_prod.category}
+                                    </div>
+                                    <div style="font-size: 1.05rem; font-weight: 800; color: #302724;">
+                                        {alt_prod.title}
+                                    </div>
+                                    <div style="font-size: 0.82rem; color: #574d49; margin-top: 2px;">
+                                        {alt.similarity_explanation}
+                                    </div>
+                                    {f'<div style="font-size: 0.78rem; font-weight: 600; color: #78350F; background: #FEF3C7; padding: 2px 8px; border-radius: 6px; display: inline-block; margin-top: 4px;">⚖️ Cost-Per-Unit: {alt.cost_per_unit_comparison}</div>' if alt.cost_per_unit_comparison else ''}
+                                </div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-size: 0.75rem; color: #64748b;">Alternative Price</div>
+                                <div style="font-size: 1.25rem; font-weight: 800; color: #15803d;">
+                                    {alt_sym}{alt_prod.lowest_price:,.0f if alt_sym == '₹' else alt_prod.lowest_price:,.2f}
+                                </div>
+                                <div style="font-size: 0.8rem; font-weight: 700; color: #C98991; background: #FDF2F4; padding: 2px 8px; border-radius: 9999px; display: inline-block; margin-top: 2px;">
+                                    Save {alt_sym}{alt.price_difference:,.0f if alt_sym == '₹' else alt.price_difference:,.2f} ({alt.percentage_savings:.0f}% cheaper)
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                col_btn_view, _ = st.columns([2, 5])
+                with col_btn_view:
+                    if st.button(f"🔍 Compare '{alt_prod.title[:25]}...' ↗", key=f"btn_switch_alt_{alt_prod.id}", use_container_width=True):
+                        st.session_state["selected_product_id"] = alt_prod.id
+                        st.rerun()
+
+    # 5. Beauty Usage Guide (Phase 4)
+    usage = get_product_usage_guide(product.id)
+    if usage:
+        st.markdown(
+            f"""
+            <div style="margin-top: 28px; margin-bottom: 12px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+                <div style="font-size: 0.8rem; font-weight: 700; color: #C98991; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">
+                    🌿 Dermatologist-Aligned Usage Ritual
+                </div>
+                <h3 style="font-size: 1.3rem; font-weight: 800; color: #302724; margin: 0 0 6px 0;">
+                    {usage.step_name} • Step {usage.step_number} ({usage.routine})
+                </h3>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        col_u1, col_u2 = st.columns([1.5, 1])
+        with col_u1:
+            st.info(f"**Application Directions:** {usage.application_instructions}\n\n**Frequency:** {usage.frequency}")
+            if usage.precautions:
+                st.caption(f"⚠️ **Precautions:** {usage.precautions}")
+        with col_u2:
+            st.warning(f"**Patch-Test Protocol:** {usage.patch_test_guideline}")
+            if usage.sun_safety_guideline:
+                st.error(f"☀️ **Photosensitivity Notice:** {usage.sun_safety_guideline}")
+
+    # 6. Reviews & Rating Consensus (Phase 4)
+    weighted = calculate_weighted_review_score(product.id)
+    st.markdown(
+        """
+        <div style="margin-top: 28px; margin-bottom: 12px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+            <div style="font-size: 0.8rem; font-weight: 700; color: #C98991; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">
+                ⭐ Multi-Platform Intelligence
+            </div>
+            <h3 style="font-size: 1.3rem; font-weight: 800; color: #302724; margin: 0 0 6px 0;">
+                Reviews & Cross-Platform Consensus
+            </h3>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if weighted.weighted_rating is not None:
+        st.success(f"**Weighted Community Score:** {weighted.weighted_rating:.2f} / 5.0 ⭐ across {weighted.total_reviews:,} verified reviews ({weighted.platforms_included} retailer feeds).")
+        st.caption(f"*{weighted.explanation}*")
+    else:
+        st.info("No verified retailer platform review feeds currently recorded for this product.")
+

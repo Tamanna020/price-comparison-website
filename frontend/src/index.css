@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: #FAF7F2;
+    color: #302724;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+
+  /* Custom beauty editorial headings */
+  h1, h2, h3, .font-editorial {
+    font-family: 'Cormorant Garamond', 'Playfair Display', serif;
+  }
+}
+
+/* Reduced motion accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Custom Editorial Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #FAF7F2;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #E8CAD0;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #C98991;
+}
+
+/* Glassmorphism & luxury borders */
+.glass-panel {
+  background: rgba(250, 247, 242, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(201, 137, 145, 0.15);
+}
+
+.luxury-border {
+  border: 1px solid rgba(214, 188, 138, 0.25);
+}
+
+.champagne-gradient {
+  background: linear-gradient(135deg, #FAF7F2 0%, #F5EFE0 50%, #FAF7F2 100%);
+}
+
+.rose-gradient {
+  background: linear-gradient(135deg, #FAF3F4 0%, #F4E5E7 100%);
+}

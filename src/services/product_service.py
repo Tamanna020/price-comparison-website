@@ -39,6 +39,47 @@ def get_all_brands(category: Optional[str] = None, custom_path: Optional[str] = 
         return [r["brand"] for r in rows if r["brand"]]
 
 
+def get_all_stores(custom_path: Optional[str] = None) -> list[dict]:
+    """Retrieve distinct registered stores."""
+    from src.services.preference_service import get_available_stores
+    return get_available_stores(custom_path)
+
+
+# Backward-compatible alias
+get_available_stores = get_all_stores
+
+
+def get_all_skin_types(custom_path: Optional[str] = None) -> list[str]:
+    """Retrieve verified skin types from product specifications."""
+    skin_types = set()
+    with get_connection(custom_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT specs_json FROM products WHERE specs_json IS NOT NULL")
+        for row in cursor.fetchall():
+            specs = parse_specs(row["specs_json"])
+            st_raw = specs.get("Skin Type")
+            if isinstance(st_raw, str):
+                for st in st_raw.split(","):
+                    cleaned = st.strip()
+                    if cleaned:
+                        skin_types.add(cleaned)
+    return sorted(list(skin_types))
+
+
+def get_all_product_types(custom_path: Optional[str] = None) -> list[str]:
+    """Retrieve distinct product formulations/types from product specifications."""
+    prod_types = set()
+    with get_connection(custom_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT specs_json FROM products WHERE specs_json IS NOT NULL")
+        for row in cursor.fetchall():
+            specs = parse_specs(row["specs_json"])
+            pt_raw = specs.get("Product Type")
+            if isinstance(pt_raw, str) and pt_raw.strip():
+                prod_types.add(pt_raw.strip())
+    return sorted(list(prod_types))
+
+
 def get_products(
     category: Optional[str] = None,
     brand: Optional[str] = None,
@@ -48,12 +89,14 @@ def get_products(
     max_price: Optional[float] = None,
     sort_by: str = "featured",
     include_history: bool = False,
+    skin_type: Optional[str] = None,
+    product_type: Optional[str] = None,
     custom_path: Optional[str] = None,
 ) -> list[Product]:
     """
     Search and filter products with summary offer information.
     Supports case-insensitive multi-term search across title, brand, sku, description, and specs.
-    sort_by options: 'featured', 'price_asc', 'price_desc', 'title_asc', 'title_desc', 'savings_desc'
+    sort_by options: 'featured', 'price_asc', 'price_desc', 'title_asc', 'name_asc', 'title_desc', 'savings_desc', 'best_deal'
     """
     with get_connection(custom_path) as conn:
         cursor = conn.cursor()
@@ -77,7 +120,7 @@ def get_products(
             sql += " AND p.brand = ?"
             params.append(brand)
 
-        # 3. Case-Insensitive Tokenized Search (matches title, brand, sku, description, specs)
+        # 3. Case-Insensitive Tokenized Search (matches title, brand, sku, description, specs including ingredients)
         if search_query and search_query.strip():
             terms = search_query.strip().split()
             for term in terms:
@@ -92,6 +135,16 @@ def get_products(
                     )
                 """
                 params.extend([wildcard, wildcard, wildcard, wildcard, wildcard])
+
+        # 4. Skin Type Filter (via specs_json)
+        if skin_type and skin_type != "All":
+            sql += " AND LOWER(p.specs_json) LIKE ?"
+            params.append(f"%{skin_type.lower()}%")
+
+        # 5. Product Type Filter (via specs_json)
+        if product_type and product_type != "All":
+            sql += " AND LOWER(p.specs_json) LIKE ?"
+            params.append(f"%{product_type.lower()}%")
 
         sql += " ORDER BY p.id ASC"
         cursor.execute(sql, params)
@@ -195,19 +248,21 @@ def get_products(
         elif sort_by == "price_desc":
             # Highest available price first; items without valid prices go to end
             products.sort(key=lambda p: (p.lowest_price is None, -(p.lowest_price or 0.0)))
-        elif sort_by == "title_asc":
+        elif sort_by in ("title_asc", "name_asc"):
             products.sort(key=lambda p: p.title.lower())
-        elif sort_by == "title_desc":
+        elif sort_by in ("title_desc", "name_desc"):
             products.sort(key=lambda p: p.title.lower(), reverse=True)
-        elif sort_by == "savings_desc":
-            # Sort by spread among available offers
-            def available_spread(p: Product) -> float:
+        elif sort_by in ("savings_desc", "best_deal"):
+            # Sort by spread or savings percentage among available offers
+            def available_savings(p: Product) -> float:
                 avail_prices = [o.current_price for o in p.available_offers]
                 if len(avail_prices) >= 2:
                     return max(avail_prices) - min(avail_prices)
-                return 0.0
+                # Check direct discount
+                discounts = [o.direct_discount_pct for o in p.available_offers]
+                return max(discounts) if discounts else 0.0
 
-            products.sort(key=available_spread, reverse=True)
+            products.sort(key=available_savings, reverse=True)
 
         return products
 
@@ -303,3 +358,49 @@ def get_product_by_id(product_id: int, custom_path: Optional[str] = None) -> Opt
             created_at=str(prow["created_at"]),
             offers=offers,
         )
+
+
+def get_product_by_slug(slug: str, custom_path: Optional[str] = None) -> Optional[Product]:
+    """
+    Retrieve product by URL-friendly slug, SKU, or numeric ID string.
+    Returns None if no matching product is found (for clean 404 handling).
+    """
+    if not slug or not slug.strip():
+        return None
+
+    clean_slug = slug.strip().lower()
+
+    # 1. If numeric string, check ID first
+    if clean_slug.isdigit():
+        prod = get_product_by_id(int(clean_slug), custom_path=custom_path)
+        if prod:
+            return prod
+
+    # 2. Check SKU match
+    with get_connection(custom_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM products WHERE LOWER(sku) = ?", (clean_slug,))
+        row = cursor.fetchone()
+        if row:
+            return get_product_by_id(row["id"], custom_path=custom_path)
+
+    # 3. Match against computed product slug or title slug
+    import re
+    all_products = get_products(custom_path=custom_path)
+    for p in all_products:
+        if p.slug == clean_slug or p.sku.lower() == clean_slug:
+            return get_product_by_id(p.id, custom_path=custom_path)
+        title_slug = re.sub(r"[^a-z0-9]+", "-", p.title.lower()).strip("-")
+        if title_slug == clean_slug:
+            return get_product_by_id(p.id, custom_path=custom_path)
+
+    # 4. Flexible substring slug match (e.g. slug without duplicate brand prefix)
+    for p in all_products:
+        title_slug = re.sub(r"[^a-z0-9]+", "-", p.title.lower()).strip("-")
+        if len(clean_slug) >= 5 and (clean_slug in p.slug or clean_slug in title_slug):
+            return get_product_by_id(p.id, custom_path=custom_path)
+
+    return None
+
+
+get_product_by_id_or_slug = get_product_by_slug

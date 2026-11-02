@@ -43,6 +43,15 @@ class Offer:
     offer_url: str = ""
     last_checked: Optional[str] = None
     price_history: list[PricePoint] = field(default_factory=list)
+    is_shipping_disclosed: bool = True
+    coupon_discount: float = 0.0
+    coupon_code: Optional[str] = None
+    source_type: str = "demo"  # 'verified_live', 'partner_feed', 'cached', 'manually_curated', 'demo', 'unavailable'
+
+    @property
+    def currency_symbol(self) -> str:
+        """Return ₹ for Indian Rupee or $ for USD."""
+        return "₹" if (self.currency or "").upper() == "INR" else "$"
 
     @property
     def is_available(self) -> bool:
@@ -58,11 +67,27 @@ class Offer:
         return self.current_price is not None and self.current_price > 0
 
     @property
+    def landed_cost(self) -> Optional[float]:
+        """
+        Total landed cost (base + shipping - coupon).
+        Returns None if shipping is undisclosed / unknown.
+        """
+        if not self.has_valid_price:
+            return None
+        if not self.is_shipping_disclosed:
+            return None
+        shipping = self.shipping_cost if self.shipping_cost is not None else 0.0
+        coupon = self.coupon_discount or 0.0
+        return round(max(0.0, self.current_price + shipping - coupon), 2)
+
+    @property
     def total_cost(self) -> float:
-        """Effective total cost including shipping."""
+        """Effective total cost including shipping and coupon."""
         if not self.has_valid_price:
             return 0.0
-        return round(self.current_price + (self.shipping_cost or 0.0), 2)
+        shipping = self.shipping_cost if (self.is_shipping_disclosed and self.shipping_cost is not None) else 0.0
+        coupon = self.coupon_discount or 0.0
+        return round(max(0.0, self.current_price + shipping - coupon), 2)
 
     @property
     def direct_discount_pct(self) -> float:
@@ -89,6 +114,14 @@ class Product:
     image_url: str = ""
     created_at: Optional[str] = None
     offers: list[Offer] = field(default_factory=list)
+
+    @property
+    def currency_symbol(self) -> str:
+        """Return ₹ if any offer is in INR, else $."""
+        for o in self.offers:
+            if (o.currency or "").upper() == "INR":
+                return "₹"
+        return "$"
 
     @property
     def available_offers(self) -> list[Offer]:
@@ -118,6 +151,14 @@ class Product:
         """Highest listed price among valid offers."""
         valid = [o.current_price for o in self.offers if o.has_valid_price]
         return max(valid) if valid else None
+
+    @property
+    def slug(self) -> str:
+        """Generate a clean, deterministic URL-friendly slug from brand and title or SKU."""
+        import re
+        raw = f"{self.brand}-{self.title}".lower()
+        cleaned = re.sub(r"[^a-z0-9]+", "-", raw).strip("-")
+        return cleaned or f"product-{self.id}"
 
     @property
     def offer_count(self) -> int:
@@ -209,6 +250,8 @@ class PriceAlert:
     target_price: Optional[float] = None
     is_read: bool = False
     trigger_key: Optional[str] = None
+    delivery_status: str = "in_app_delivered"  # 'in_app_delivered', 'email_unconfigured', 'pending'
+    channel: str = "in_app"  # 'in_app', 'email' (labeled unconfigured when email)
 
     # Joined fields
     product_title: Optional[str] = None
@@ -233,6 +276,82 @@ class User:
     @property
     def full_name(self) -> str:
         return self.display_name
+
+
+# =====================================================================
+# Phase 4: Reviews, Platform Comparison & Usage Intelligence Models
+# =====================================================================
+
+@dataclass
+class ProductReview:
+    id: int
+    product_id: int
+    platform: str  # 'Nykaa', 'Tira', 'Purplle', 'Amazon India', 'Myntra'
+    reviewer_name: str
+    rating: float  # out of rating_scale
+    comment: str
+    rating_scale: float = 5.0
+    title: Optional[str] = None
+    review_date: Optional[str] = None
+    verified_buyer: bool = False
+    skin_type: Optional[str] = None
+    source_url: Optional[str] = None
+    data_status: str = "demo"  # 'demo', 'verified_retailer', 'manually_curated'
+    external_review_id: Optional[str] = None
+    created_at: Optional[str] = None
+
+    @property
+    def normalized_rating(self) -> float:
+        """Normalize rating to standard 5.0 scale."""
+        if self.rating_scale and self.rating_scale > 0:
+            return round((self.rating / self.rating_scale) * 5.0, 1)
+        return self.rating
+
+
+@dataclass
+class PlatformRatingSummary:
+    platform: str
+    average_rating: Optional[float]
+    review_count: Optional[int]
+    rating_scale: float = 5.0
+    data_source: str = "Retailer Feed (Demo)"
+    product_url: Optional[str] = None
+    last_verified: Optional[str] = None
+    is_available: bool = True
+
+    @property
+    def normalized_rating(self) -> Optional[float]:
+        """Normalized 5-star rating."""
+        if self.average_rating is not None and self.rating_scale > 0:
+            return round((self.average_rating / self.rating_scale) * 5.0, 2)
+        return None
+
+
+@dataclass
+class WeightedReviewScore:
+    product_id: int
+    weighted_rating: Optional[float]
+    total_reviews: int
+    platforms_included: int
+    platform_breakdown: list[PlatformRatingSummary] = field(default_factory=list)
+    calculation_method: str = "Sum(Rating_i * Count_i) / Sum(Count_i)"
+    explanation: str = ""
+    data_status: str = "demo"
+
+
+@dataclass
+class ProductUsageGuide:
+    product_id: int
+    routine: str  # 'AM', 'PM', 'AM & PM'
+    step_number: int  # 1 to 5
+    step_name: str  # e.g. 'Cleanse', 'Tone', 'Treat', 'Moisturize', 'Sunscreen'
+    frequency: str  # e.g. 'Daily every morning', 'Twice daily', '2-3 nights per week'
+    application_instructions: str
+    precautions: str
+    patch_test_guideline: str
+    sun_safety_guideline: Optional[str] = None
+    key_actives_breakdown: list[dict[str, str]] = field(default_factory=list)
+    source_reference: str = "Manufacturer Label & Indian Dermatological Society Guidelines"
 
 
 @dataclass

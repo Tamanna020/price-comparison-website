@@ -1,3 +1,10 @@
+# Environment Secrets
+.env
+.env.local
+.env.*.local
+*.env
+!.env.example
+
 # Python
 __pycache__/
 *.py[cod]
@@ -12,15 +19,28 @@ ENV/
 # Database
 *.db
 *.sqlite3
+*.db.backup*
+*.backup*
 !seed_*.db
 
 # Streamlit
 .streamlit/secrets.toml
 
-# Testing
+# Testing & Browser Automation Artifacts
 .pytest_cache/
 .coverage
 htmlcov/
+playwright-report/
+test-results/
+blob-report/
+
+# Logs & Temporary Files
+*.log
+*.tmp
+
+# Frontend Build & Node Modules
+frontend/dist/
+frontend/node_modules/
 
 # OS
 .DS_Store

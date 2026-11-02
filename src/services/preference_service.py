@@ -32,6 +32,17 @@ VALID_SORTS = (
     "savings_desc",
 )
 
+__all__ = [
+    "DEFAULT_SORT_PREFERENCE",
+    "DEFAULT_PRIORITY",
+    "VALID_PRIORITIES",
+    "VALID_SORTS",
+    "get_user_preferences",
+    "save_user_preferences",
+    "reset_user_preferences",
+    "get_available_stores",
+]
+
 
 def get_user_preferences(
     user_id: int,

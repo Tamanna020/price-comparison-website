@@ -11,6 +11,7 @@ Provides:
 
 from datetime import datetime, timezone
 import hashlib
+import os
 import re
 import secrets
 from typing import Optional
@@ -320,4 +321,109 @@ def change_password(
         )
 
     return True, "Password changed successfully."
+
+
+# =====================================================================
+# Phase 7: Cryptographically Signed Session Token Management
+# =====================================================================
+
+import base64
+import json
+import time
+
+AUTH_SECRET_KEY = os.getenv("AUTH_SECRET_KEY", "pricewise_beauty_super_secret_session_key_2026").encode("utf-8")
+DEFAULT_SESSION_DURATION_SECONDS = 7 * 24 * 3600  # 7 days
+
+
+def _base64url_encode(data: bytes) -> str:
+    """Encode bytes to base64url string without trailing padding."""
+    return base64.urlsafe_b64encode(data).decode("utf-8").rstrip("=")
+
+
+def _base64url_decode(s: str) -> bytes:
+    """Decode base64url string with reinstated padding."""
+    rem = len(s) % 4
+    if rem:
+        s += "=" * (4 - rem)
+    return base64.urlsafe_b64decode(s.encode("utf-8"))
+
+
+def generate_session_token(
+    user_id: int,
+    email: str,
+    expires_in_seconds: int = DEFAULT_SESSION_DURATION_SECONDS,
+) -> str:
+    """
+    Generate an HMAC-SHA256 signed session token for authenticated user.
+    Token format: base64url(payload).base64url(signature)
+    """
+    now = int(time.time())
+    payload = {
+        "user_id": user_id,
+        "email": normalize_email(email),
+        "iat": now,
+        "exp": now + expires_in_seconds,
+    }
+    payload_bytes = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    payload_b64 = _base64url_encode(payload_bytes)
+
+    # Compute HMAC-SHA256 signature
+    sig = hashlib.pbkdf2_hmac("sha256", payload_b64.encode("utf-8"), AUTH_SECRET_KEY, 1)
+    sig_b64 = _base64url_encode(sig)
+
+    return f"{payload_b64}.{sig_b64}"
+
+
+def verify_session_token(token: str) -> Optional[dict]:
+    """
+    Verify signature and expiration of an HMAC-SHA256 signed session token.
+    Returns payload dictionary if valid, or None if expired / tampered.
+    """
+    if not token or not isinstance(token, str):
+        return None
+
+    try:
+        parts = token.strip().split(".")
+        if len(parts) != 2:
+            return None
+
+        payload_b64, sig_b64 = parts
+        expected_sig = hashlib.pbkdf2_hmac("sha256", payload_b64.encode("utf-8"), AUTH_SECRET_KEY, 1)
+        expected_b64 = _base64url_encode(expected_sig)
+
+        # Constant-time comparison prevents timing attacks
+        if not secrets.compare_digest(sig_b64, expected_b64):
+            return None
+
+        payload_bytes = _base64url_decode(payload_b64)
+        payload = json.loads(payload_bytes.decode("utf-8"))
+
+        now = int(time.time())
+        if payload.get("exp", 0) < now:
+            return None  # Expired token
+
+        return payload
+    except Exception:
+        return None
+
+
+def get_authenticated_user_from_token(
+    token: str,
+    custom_path: Optional[str] = None,
+) -> Optional[User]:
+    """Verify session token and retrieve active User object from database."""
+    payload = verify_session_token(token)
+    if not payload:
+        return None
+
+    user_id = payload.get("user_id")
+    if not user_id:
+        return None
+
+    user = get_user_by_id(user_id, custom_path=custom_path)
+    if not user or not user.is_active:
+        return None
+
+    return user
+
 

@@ -48,9 +48,9 @@ def render_tracking_chart(product_id: int, target_price: float):
         .mark_line(point=True)
         .encode(
             x=alt.X("Date:T", title="Observation Timeline"),
-            y=alt.Y("Price:Q", title="Price (USD)", scale=alt.Scale(zero=False)),
+            y=alt.Y("Price:Q", title="Price (₹ INR)", scale=alt.Scale(zero=False)),
             color=alt.Color("Store:N", title="Store Feeds"),
-            tooltip=["Date:T", "Store:N", alt.Tooltip("Price:Q", format="$.2f")],
+            tooltip=["Date:T", "Store:N", alt.Tooltip("Price:Q", format=",.2f", title="Price (₹)")],
         )
         .properties(height=220)
     )
@@ -62,7 +62,7 @@ def render_tracking_chart(product_id: int, target_price: float):
         .mark_rule(color="#ef4444", strokeDash=[6, 4], size=2)
         .encode(
             y="Target Price:Q",
-            tooltip=[alt.Tooltip("Target Price:Q", format="$.2f", title="Your Target Price")],
+            tooltip=[alt.Tooltip("Target Price:Q", format=",.2f", title="Your Target Price (₹)")],
         )
     )
 
@@ -98,7 +98,7 @@ def render_tracking_view():
     if authenticated_user:
         st.markdown(
             f"""
-            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.85rem; color: #1e40af; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.85rem; color: #1e40af; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <div>
                     <span>👤</span> <strong>Personal Tracking Active:</strong> {authenticated_user.full_name or authenticated_user.email} 
                     <span style="color: #60a5fa; margin-left: 6px;">({authenticated_user.email})</span>
@@ -113,7 +113,7 @@ def render_tracking_view():
     else:
         st.markdown(
             """
-            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.85rem; color: #475569; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.85rem; color: #475569; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                 <div>
                     <span>👤</span> <strong>Guest Tracking:</strong> You are currently tracking products in guest mode.
                 </div>
@@ -124,6 +124,16 @@ def render_tracking_view():
             """,
             unsafe_allow_html=True,
         )
+
+    # In-App Alerts & Monitoring Policy Notice
+    st.markdown(
+        """
+        <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.82rem; color: #92400e; line-height: 1.4;">
+            <strong>📢 Price Tracking & Delivery Notice:</strong> Active monitors evaluate against recorded retailer observations (Nykaa, Tira, Purplle, Amazon India, Myntra). Alerts are delivered directly via this in-app inbox. Automated background scraping and external email push delivery are unconfigured in this environment.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # Live Overview Summary Tiles
     stats = get_tracking_summary_stats(user_id=user_id)
@@ -203,7 +213,7 @@ def render_tracking_view():
                 st.info("No products available in the catalog to track.")
             else:
                 product_map = {
-                    p.id: f"{p.brand} - {p.title} (Current: ${p.lowest_price:,.2f})" if p.lowest_price else f"{p.brand} - {p.title}"
+                    p.id: f"{p.brand} - {p.title} (Current: ₹{p.lowest_price:,.2f})" if p.lowest_price else f"{p.brand} - {p.title}"
                     for p in catalog_products
                 }
 
@@ -223,9 +233,9 @@ def render_tracking_view():
 
                 with col_add_t:
                     target_input = st.number_input(
-                        "Target Price ($ USD)",
+                        "Target Price (₹ INR)",
                         min_value=1.0,
-                        max_value=10000.0,
+                        max_value=50000.0,
                         value=float(default_target),
                         step=10.0,
                         help="You will receive an in-app alert when recorded price reaches or falls below this target.",
@@ -293,13 +303,13 @@ def render_tracking_view():
                 )
 
                 if rec.is_target_reached:
-                    progress_html = f'<span class="badge-target-reached">🎯 TARGET REACHED! (${abs(rec.price_to_target or 0):,.2f} below target)</span>'
+                    progress_html = f'<span class="badge-target-reached">🎯 TARGET REACHED! (₹{abs(rec.price_to_target or 0):,.2f} below target)</span>'
                 elif rec.price_to_target is not None:
-                    progress_html = f'<span style="background: #eff6ff; color: #2563eb; font-size: 0.72rem; font-weight: 700; padding: 3px 8px; border-radius: 10px;">⏳ ${rec.price_to_target:,.2f} to target ({rec.price_to_target_pct:+.1f}%)</span>'
+                    progress_html = f'<span style="background: #eff6ff; color: #2563eb; font-size: 0.72rem; font-weight: 700; padding: 3px 8px; border-radius: 10px;">⏳ ₹{rec.price_to_target:,.2f} to target ({rec.price_to_target_pct:+.1f}%)</span>'
                 else:
                     progress_html = '<span style="background: #f1f5f9; color: #64748b; font-size: 0.72rem; font-weight: 600; padding: 3px 8px; border-radius: 10px;">Price pending</span>'
 
-                cur_price_str = f"${rec.current_lowest_price:,.2f}" if rec.current_lowest_price is not None else "Out of Stock"
+                cur_price_str = f"₹{rec.current_lowest_price:,.2f}" if rec.current_lowest_price is not None else "Out of Stock"
                 store_str = f"at {rec.current_lowest_store}" if rec.current_lowest_store else ""
                 note_html = f'<div style="font-size: 0.8rem; color: #475569; margin-top: 6px; font-style: italic;">📝 Note: {rec.note}</div>' if rec.note else ""
                 last_chk = rec.last_checked_at[:16] if rec.last_checked_at else "Recent"
@@ -330,7 +340,7 @@ def render_tracking_view():
                                 </div>
                                 <div>
                                     <div style="font-size: 0.7rem; color: #64748b; text-transform: uppercase;">Your Target</div>
-                                    <div style="font-size: 1.3rem; font-weight: 800; color: #ef4444; font-family: monospace;">${rec.target_price:,.2f}</div>
+                                    <div style="font-size: 1.3rem; font-weight: 800; color: #ef4444; font-family: monospace;">₹{rec.target_price:,.2f}</div>
                                     <div style="font-size: 0.72rem; color: #64748b;">Trigger: {rec.alert_trigger_type.replace('_', ' ').title()}</div>
                                 </div>
                             </div>
@@ -360,7 +370,7 @@ def render_tracking_view():
 
                 with col_action_edit:
                     with st.popover("✏️ Edit Target"):
-                        new_t = st.number_input("New Target ($)", value=float(rec.target_price), min_value=1.0, step=10.0, key=f"edit_target_{rec.id}")
+                        new_t = st.number_input("New Target (₹)", value=float(rec.target_price), min_value=1.0, step=10.0, key=f"edit_target_{rec.id}")
                         new_note = st.text_input("Edit Note", value=rec.note or "", key=f"edit_note_{rec.id}")
                         if st.button("Save Changes", key=f"btn_save_target_{rec.id}"):
                             update_target_price(rec.id, new_t, user_id=user_id)

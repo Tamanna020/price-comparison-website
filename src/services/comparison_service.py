@@ -27,6 +27,10 @@ class ComparisonSummary:
     savings_claim_explanation: str
     ranked_offers: list[Offer] = field(default_factory=list)
     non_comparable_offers: list[dict] = field(default_factory=list)
+    lowest_verified_offer_label: str = "Lowest among available verified offers"
+    is_shipping_known_for_all: bool = True
+    verified_match_count: int = 0
+    possible_match_count: int = 0
 
     @property
     def cheapest_store_name(self) -> str:
@@ -62,13 +66,41 @@ def validate_offer_compatibility(product: Product, offer: Offer) -> tuple[bool, 
     canonical_specs = product.specs or {}
     offer_variant_lower = (offer.variant_name or "").lower()
 
-    # Check for obvious variant contradictions (e.g., 256GB vs 512GB)
+    # Check for obvious tech variant contradictions (e.g., 256GB vs 512GB)
     if "Storage" in canonical_specs:
         target_storage = str(canonical_specs["Storage"]).lower().replace(" ", "")
         # If offer specifies a different storage capacity, reject as non-comparable
         for alt_storage in ["128gb", "256gb", "512gb", "1tb", "2tb"]:
             if alt_storage in offer_variant_lower and alt_storage not in target_storage:
                 return False, f"Variant mismatch: offer has {alt_storage.upper()} but product is {target_storage.upper()}"
+
+    # Beauty variant checks: Size / Net Quantity
+    target_qty_raw = canonical_specs.get("Net Quantity") or canonical_specs.get("Size")
+    if target_qty_raw:
+        import re
+        target_qty = str(target_qty_raw).lower().replace(" ", "")
+        for unit in ["ml", "g", "gm", "oz"]:
+            target_match = re.search(r"(\d+(?:\.\d+)?)" + unit, target_qty)
+            offer_match = re.search(r"(\d+(?:\.\d+)?)" + unit, offer_variant_lower.replace(" ", ""))
+            if target_match and offer_match:
+                if target_match.group(1) != offer_match.group(1):
+                    return False, f"Variant mismatch: Size/volume mismatch: offer has {offer_match.group(0).upper()} but product is {target_match.group(0).upper()}"
+
+    # Beauty variant checks: Shade
+    if "Shade" in canonical_specs:
+        target_shade = str(canonical_specs["Shade"]).lower().strip()
+        for known_shade in ["ruby woo", "reconstruct", "velvet teddy", "warm nude", "encourage", "midnight black"]:
+            if known_shade in offer_variant_lower and known_shade not in target_shade:
+                return False, f"Variant mismatch: Shade mismatch: offer has shade '{known_shade.title()}' but product is '{target_shade.title()}'"
+
+    # Beauty variant checks: Formulation
+    target_form_raw = canonical_specs.get("Product Type") or canonical_specs.get("Formulation")
+    if target_form_raw:
+        target_type = str(target_form_raw).lower()
+        if "waterproof" in target_type and "washable" in offer_variant_lower:
+            return False, "Variant mismatch: Formulation mismatch: offer is Washable but product is Waterproof"
+        if "washable" in target_type and "waterproof" in offer_variant_lower:
+            return False, "Variant mismatch: Formulation mismatch: offer is Waterproof but product is Washable"
 
     return True, "Verified Exact Match"
 
@@ -162,6 +194,8 @@ def generate_comparison_summary(product: Product) -> Optional[ComparisonSummary]
     else:
         savings_explanation = "This item is currently Out of Stock across all monitored stores. Historical prices shown for reference."
 
+    is_shipping_known = all(getattr(o, "is_shipping_disclosed", True) for o in comparable_offers)
+
     return ComparisonSummary(
         product=product,
         total_stores=total_stores,
@@ -179,6 +213,10 @@ def generate_comparison_summary(product: Product) -> Optional[ComparisonSummary]
         savings_claim_explanation=savings_explanation,
         ranked_offers=all_ranked,
         non_comparable_offers=non_comparable_offers,
+        lowest_verified_offer_label="Lowest among available verified offers",
+        is_shipping_known_for_all=is_shipping_known,
+        verified_match_count=len(comparable_offers),
+        possible_match_count=len(non_comparable_offers),
     )
 
 

@@ -6,6 +6,7 @@ ALL DATA IS DEMO DATA FOR ACADEMIC PROTOTYPE PURPOSES.
 from datetime import datetime, timedelta, timezone
 import json
 from src.database.connection import get_connection, init_db
+from src.database.beauty_seed_data import DEMO_BEAUTY_STORES, DEMO_BEAUTY_PRODUCTS
 
 # Demo stores
 DEMO_STORES = [
@@ -541,9 +542,11 @@ def seed_database(custom_path: str | None = None, force: bool = False, seed_demo
             cursor.execute("DELETE FROM stores")
             cursor.execute("DELETE FROM products")
 
-        # 1. Insert Demo Stores
+        # 1. Insert Demo Stores (Tech & Indian Beauty Retailers)
+        all_stores = DEMO_STORES + DEMO_BEAUTY_STORES
         store_ids = {}
-        for store in DEMO_STORES:
+        store_domains = {}
+        for store in all_stores:
             cursor.execute(
                 """
                 INSERT INTO stores (name, domain, rating, shipping_policy)
@@ -557,9 +560,11 @@ def seed_database(custom_path: str | None = None, force: bool = False, seed_demo
             )
             cursor.execute("SELECT id FROM stores WHERE name = ?", (store["name"],))
             store_ids[store["name"]] = cursor.fetchone()[0]
+            store_domains[store["name"]] = store["domain"]
 
-        # 2. Insert Products and Offers
-        for prod in DEMO_PRODUCTS:
+        # 2. Insert Products and Offers (Tech & Indian Beauty Catalog)
+        all_products = DEMO_PRODUCTS + DEMO_BEAUTY_PRODUCTS
+        for prod in all_products:
             cursor.execute(
                 """
                 INSERT INTO products (sku, title, brand, category, description, specs_json, image_url)
@@ -577,15 +582,19 @@ def seed_database(custom_path: str | None = None, force: bool = False, seed_demo
             )
             product_id = cursor.lastrowid
 
+            currency = "INR" if "BEAUTY" in prod["sku"] else "USD"
+
             for offer in prod["offers"]:
-                store_id = store_ids[offer["store_name"]]
+                store_name = offer["store_name"]
+                store_id = store_ids[store_name]
+                store_domain = store_domains.get(store_name, "example.com")
                 cursor.execute(
                     """
                     INSERT INTO offers (
                         product_id, store_id, current_price, original_price, 
-                        shipping_cost, availability, variant_name, condition, offer_url
+                        shipping_cost, currency, availability, variant_name, condition, offer_url
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         product_id,
@@ -593,10 +602,11 @@ def seed_database(custom_path: str | None = None, force: bool = False, seed_demo
                         offer["current_price"],
                         offer.get("original_price"),
                         offer.get("shipping_cost", 0.0),
+                        currency,
                         offer.get("availability", "In Stock"),
                         offer.get("variant_name", "Standard"),
                         offer.get("condition", "Brand New"),
-                        f"https://{DEMO_STORES[0]['domain']}/product/{prod['sku']}",
+                        f"https://{store_domain}/product/{prod['sku']}",
                     ),
                 )
                 offer_id = cursor.lastrowid
@@ -609,7 +619,7 @@ def seed_database(custom_path: str | None = None, force: bool = False, seed_demo
                         INSERT INTO price_history (offer_id, price, currency, data_source, data_status, recorded_at)
                         VALUES (?, ?, ?, ?, ?, ?)
                         """,
-                        (offer_id, hist_price, "USD", "demo_seed", "demo", recorded_at),
+                        (offer_id, hist_price, currency, "demo_seed", "demo", recorded_at),
                     )
 
     # 3. Seed Demo Member Account for Academic Viva / Evaluation

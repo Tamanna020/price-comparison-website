@@ -519,8 +519,9 @@ def evaluate_tracking_rules(
                             """
                             INSERT OR IGNORE INTO price_alerts (
                                 user_id, tracking_id, product_id, alert_type, observed_price,
-                                target_price, message, created_at, is_read, trigger_key
-                            ) VALUES (?, ?, ?, 'target_reached', ?, ?, ?, ?, 0, ?)
+                                target_price, message, created_at, is_read, trigger_key,
+                                delivery_status, channel
+                            ) VALUES (?, ?, ?, 'target_reached', ?, ?, ?, ?, 0, ?, 'in_app_delivered', 'in_app')
                             """,
                             (t_user_id, t_id, p_id, cur_price, target_price, message, now_str, trigger_key),
                         )
@@ -541,6 +542,8 @@ def evaluate_tracking_rules(
                                     trigger_key=trigger_key,
                                     product_title=prod_title,
                                     product_brand=str(rec["product_brand"]),
+                                    delivery_status="in_app_delivered",
+                                    channel="in_app",
                                 )
                             )
                             cursor.execute(
@@ -580,8 +583,9 @@ def evaluate_tracking_rules(
                                 """
                                 INSERT OR IGNORE INTO price_alerts (
                                     user_id, tracking_id, product_id, alert_type, observed_price,
-                                    previous_price, target_price, message, created_at, is_read, trigger_key
-                                ) VALUES (?, ?, ?, 'price_drop', ?, ?, ?, ?, ?, 0, ?)
+                                    previous_price, target_price, message, created_at, is_read, trigger_key,
+                                    delivery_status, channel
+                                ) VALUES (?, ?, ?, 'price_drop', ?, ?, ?, ?, ?, 0, ?, 'in_app_delivered', 'in_app')
                                 """,
                                 (t_user_id, t_id, p_id, cur_price, previous_price, target_price, message, now_str, drop_key),
                             )
@@ -603,6 +607,8 @@ def evaluate_tracking_rules(
                                         trigger_key=drop_key,
                                         product_title=prod_title,
                                         product_brand=str(rec["product_brand"]),
+                                        delivery_status="in_app_delivered",
+                                        channel="in_app",
                                     )
                                 )
                                 cursor.execute(
@@ -688,6 +694,8 @@ def get_alert_history(
                 created_at=str(r["created_at"]),
                 is_read=bool(r["is_read"]),
                 trigger_key=str(r["trigger_key"]) if r["trigger_key"] else None,
+                delivery_status=str(r["delivery_status"]) if "delivery_status" in r.keys() and r["delivery_status"] else "in_app_delivered",
+                channel=str(r["channel"]) if "channel" in r.keys() and r["channel"] else "in_app",
                 product_title=str(r["product_title"]),
                 product_brand=str(r["product_brand"]),
                 product_image_url=str(r["product_image_url"]),

@@ -5,6 +5,7 @@ time-window filtering (30-day, 90-day, all-time), and safe updates.
 
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+from dataclasses import dataclass
 from src.database.connection import get_connection
 from src.database.models import PricePoint
 
@@ -13,8 +14,14 @@ def parse_timestamp(ts_str: str) -> Optional[datetime]:
     """Parse various datetime string formats into UTC-aware datetime."""
     if not ts_str:
         return None
-    # Strip trailing whitespace or Z
     clean_ts = ts_str.strip()
+    try:
+        dt = datetime.fromisoformat(clean_ts)
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        pass
     formats = [
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%dT%H:%M:%S",
@@ -165,4 +172,106 @@ def get_offer_price_history(
         )
 
     return points
+
+
+@dataclass
+class ProductPriceHistorySummary:
+    product_id: int
+    variant_name: Optional[str]
+    window_days: Optional[int]
+    points: list[PricePoint]
+    observation_count: int
+    is_sufficient_history: bool
+    min_price: Optional[float] = None
+    max_price: Optional[float] = None
+    avg_price: Optional[float] = None
+    currency: str = "INR"
+    data_status: str = "demo"
+
+
+def get_product_price_history(
+    product_id: int,
+    variant_name: Optional[str] = None,
+    window_days: Optional[int] = None,
+    reference_date: Optional[datetime] = None,
+    custom_path: Optional[str] = None,
+) -> ProductPriceHistorySummary:
+    """
+    Retrieve historical prices for a product and matching variant.
+    
+    Guarantees:
+    - Different sizes, shades, and formulations remain separate when variant_name is specified.
+    - Window filtering supports 7, 30, 90 days or all-time (window_days=None).
+    - min_price, max_price, and avg_price are calculated ONLY when sufficient records exist (>= 2 points).
+    - Returns is_sufficient_history=False and None metrics when records < 2 (honest empty state).
+    - Avoids fabricating historical price points.
+    """
+    ref_dt = reference_date or datetime.now(timezone.utc)
+
+    with get_connection(custom_path) as conn:
+        cursor = conn.cursor()
+        sql = """
+            SELECT 
+                ph.id, ph.offer_id, ph.price, ph.currency, ph.data_source, ph.data_status, ph.recorded_at,
+                o.variant_name, s.name as store_name
+            FROM price_history ph
+            JOIN offers o ON ph.offer_id = o.id
+            JOIN stores s ON o.store_id = s.id
+            WHERE o.product_id = ?
+        """
+        params = [product_id]
+
+        if variant_name and variant_name.strip() and variant_name.lower() != "all":
+            sql += " AND LOWER(TRIM(o.variant_name)) = LOWER(TRIM(?))"
+            params.append(variant_name)
+
+        sql += " ORDER BY ph.recorded_at ASC, ph.id ASC"
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+
+    points: list[PricePoint] = []
+    currency = "INR"
+    for r in rows:
+        pt_dt = parse_timestamp(r["recorded_at"])
+        if not pt_dt:
+            if window_days is not None:
+                continue
+        elif window_days is not None:
+            cutoff = ref_dt - timedelta(days=window_days)
+            if pt_dt < cutoff or pt_dt > ref_dt:
+                continue
+
+        curr = r["currency"] if "currency" in r.keys() and r["currency"] else "USD"
+        currency = curr
+        points.append(
+            PricePoint(
+                id=r["id"],
+                offer_id=r["offer_id"],
+                price=float(r["price"]),
+                recorded_at=str(r["recorded_at"]),
+                currency=curr,
+                data_source=r["data_source"] if "data_source" in r.keys() else "demo_seed",
+                data_status=r["data_status"] if "data_status" in r.keys() else "demo",
+            )
+        )
+
+    count = len(points)
+    is_sufficient = (count >= 2)
+    min_p = round(min(p.price for p in points), 2) if is_sufficient else None
+    max_p = round(max(p.price for p in points), 2) if is_sufficient else None
+    avg_p = round(sum(p.price for p in points) / count, 2) if is_sufficient else None
+
+    return ProductPriceHistorySummary(
+        product_id=product_id,
+        variant_name=variant_name,
+        window_days=window_days,
+        points=points,
+        observation_count=count,
+        is_sufficient_history=is_sufficient,
+        min_price=min_p,
+        max_price=max_p,
+        avg_price=avg_p,
+        currency=currency,
+        data_status="demo",
+    )
 

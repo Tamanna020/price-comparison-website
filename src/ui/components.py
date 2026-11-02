@@ -17,10 +17,10 @@ def render_demo_banner():
         <div class="demo-banner">
             <div>
                 <strong>{DEMO_BADGE_LABEL}</strong>
-                <span>All products, prices, store names, and historical trends are curated simulated records for academic evaluation.</span>
+                <span>Indian beauty & skincare intelligence platform. Curated demo dataset across Nykaa, Tira, Purplle, Amazon, & Myntra.</span>
             </div>
-            <div style="font-size: 0.75rem; color: #94a3b8; white-space: nowrap;">
-                Academic Prototype v0.2
+            <div style="font-size: 0.75rem; color: #D6BC8A; font-weight: 600; white-space: nowrap;">
+                PriceWise Beauty
             </div>
         </div>
         """,
@@ -96,11 +96,14 @@ def get_pill_class(verdict: str) -> str:
 
 
 def render_product_card(product: Product, analysis: DealAnalysis | None):
-    """Renders an attractive product card with shopping intelligence tags."""
+    """Renders an attractive product card with shopping intelligence tags and currency awareness."""
+    from src.services.alternative_service import get_cheapest_alternatives
+
     verdict = analysis.verdict if analysis else "MONITORED"
     pill_class = get_pill_class(verdict)
     lowest_price = product.lowest_price
     has_available = product.available_offer_count > 0
+    sym = product.currency_symbol
 
     # Calculate spread only across available offers
     available_prices = [o.current_price for o in product.available_offers]
@@ -109,20 +112,31 @@ def render_product_card(product: Product, analysis: DealAnalysis | None):
     else:
         savings_delta = 0.0
 
+    # Best available offer retailer
+    best_store = ""
+    if product.available_offers:
+        best_offer = min(product.available_offers, key=lambda o: o.total_cost)
+        best_store = best_offer.store_name
+
     with st.container():
         # Pricing subtext
         if has_available and lowest_price is not None:
-            price_display = f"${lowest_price:,.2f}"
-            price_subtext = "Starting from"
+            price_display = f"{sym}{lowest_price:,.0f}" if sym == "₹" else f"${lowest_price:,.2f}"
+            price_subtext = f"Lowest at {best_store}" if best_store else "Starting from"
             stock_info = f"{product.offer_count} offers ({product.available_offer_count} in stock)"
         elif lowest_price is not None:
-            price_display = f"${lowest_price:,.2f}"
+            price_display = f"{sym}{lowest_price:,.0f}" if sym == "₹" else f"${lowest_price:,.2f}"
             price_subtext = "Last listed price"
             stock_info = "<span style='color: #dc2626; font-weight: 600;'>Out of Stock</span>"
         else:
             price_display = "N/A"
             price_subtext = "No active offers"
             stock_info = "Unavailable"
+
+        savings_html = ""
+        if savings_delta > 0:
+            diff_fmt = f"{sym}{savings_delta:,.0f}" if sym == "₹" else f"${savings_delta:,.2f}"
+            savings_html = f'<span class="price-savings">Save {diff_fmt}</span>'
 
         st.markdown(
             f"""
@@ -144,7 +158,7 @@ def render_product_card(product: Product, analysis: DealAnalysis | None):
                         <div class="price-main">{price_display}</div>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
                             <span class="price-sub">{stock_info}</span>
-                            {f'<span class="price-savings">Save ${savings_delta:,.2f}</span>' if savings_delta > 0 else ''}
+                            {savings_html}
                         </div>
                     </div>
                 </div>
@@ -153,6 +167,7 @@ def render_product_card(product: Product, analysis: DealAnalysis | None):
             unsafe_allow_html=True,
         )
 
+        # Action Buttons: Compare Stores & Wishlist
         col_c_btn, col_w_btn = st.columns([3.5, 1])
         with col_c_btn:
             if st.button("📊 Compare Stores", key=f"btn_comp_{product.id}", use_container_width=True):
@@ -174,6 +189,32 @@ def render_product_card(product: Product, analysis: DealAnalysis | None):
                     st.rerun()
                 else:
                     st.toast("Please log in or register via the sidebar to save items to your wishlist.")
+
+        # Quick Expanders for Details & Cheapest Alternative
+        with st.expander("ℹ️ Details & Alternative", expanded=False):
+            if product.specs:
+                for k, v in list(product.specs.items())[:4]:
+                    st.caption(f"**{k}:** {v}")
+            
+            alts = get_cheapest_alternatives(product, max_results=1)
+            if alts:
+                alt = alts[0]
+                alt_sym = alt.alternative_product.currency_symbol
+                st.markdown(
+                    f"""
+                    <div style="margin-top: 6px; padding: 6px 8px; background: #FAF7F2; border: 1px solid #EED4D8; border-radius: 6px; font-size: 0.78rem;">
+                        <strong style="color: #4A1D2F;">✨ Cheaper Alternative:</strong><br/>
+                        {alt.alternative_product.brand} - {alt.alternative_product.title}<br/>
+                        <span style="color: #15803d; font-weight: 700;">Save {alt_sym}{alt.price_difference:,.0f} ({alt.percentage_savings:.0f}% cheaper)</span><br/>
+                        <span style="color: #6b7280; font-size: 0.72rem;">{alt.similarity_explanation}</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if st.button(f"Switch to Alternative ↗", key=f"btn_card_alt_{product.id}", use_container_width=True):
+                    st.session_state["selected_product_id"] = alt.alternative_product.id
+                    st.session_state["current_view"] = "comparison"
+                    st.rerun()
 
 
 def render_real_deal_detector(analysis: DealAnalysis):
@@ -374,7 +415,15 @@ def render_comparison_table(summary: ComparisonSummary):
         elif is_lowest_base:
             badge = '<span style="background: #e0f2fe; color: #0369a1; font-size: 0.72rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 6px;">★ LOWEST ITEM PRICE</span>'
 
-        shipping_text = "FREE" if offer.shipping_cost == 0 else f"${offer.shipping_cost:,.2f}"
+        sym = getattr(offer, "currency_symbol", "₹" if (offer.currency or "").upper() == "INR" else "$")
+
+        is_shipping_disclosed = getattr(offer, "is_shipping_disclosed", True)
+        if offer.shipping_cost == 0:
+            shipping_text = '<span style="color: #15803d; font-weight: 600;">FREE</span>'
+        elif offer.shipping_cost is not None and is_shipping_disclosed:
+            shipping_text = f"{sym}{offer.shipping_cost:,.0f}" if sym == "₹" else f"${offer.shipping_cost:,.2f}"
+        else:
+            shipping_text = '<span style="color: #b45309; font-style: italic;">Not Disclosed</span>'
 
         if is_available:
             avail_html = f'<span style="color: #15803d; font-weight: 600; font-size: 0.82rem;">● {offer.availability}</span>'
@@ -383,10 +432,28 @@ def render_comparison_table(summary: ComparisonSummary):
 
         last_updated = offer.last_checked[:16] if offer.last_checked else "Recent"
 
+        curr_fmt = f"{sym}{offer.current_price:,.0f}" if sym == "₹" else f"${offer.current_price:,.2f}"
+        orig_html = ""
+        if offer.original_price:
+            orig_fmt = f"{sym}{offer.original_price:,.0f}" if sym == "₹" else f"${offer.original_price:,.2f}"
+            orig_html = f'<br/><span style="text-decoration: line-through; color: #94a3b8; font-size: 0.78rem;">{orig_fmt}</span>'
+
+        coupon_html = ""
+        if getattr(offer, "coupon_code", None) and getattr(offer, "coupon_discount", 0) > 0:
+            coupon_html = f'<br/><span style="color: #C98991; font-size: 0.74rem; font-weight: 600;">🎟️ {offer.coupon_code} (-{sym}{offer.coupon_discount:.0f})</span>'
+
+        if not is_shipping_disclosed:
+            total_fmt = '<span style="color: #b45309; font-style: italic; font-size: 0.82rem;">Undisclosed (Base Only)</span>'
+        else:
+            total_fmt = f"{sym}{offer.total_cost:,.0f}" if sym == "₹" else f"${offer.total_cost:,.2f}"
+
+        source_label = getattr(offer, "source_type", "demo").replace("_", " ").title()
+        source_badge = f'<span style="background: #f1f5f9; color: #475569; font-size: 0.68rem; padding: 2px 5px; border-radius: 4px; margin-left: 4px;">{source_label}</span>'
+
         rows_html += f"""
         <tr {row_class}>
             <td>
-                <strong>{offer.store_name}</strong> {badge}<br/>
+                <strong>{offer.store_name}</strong> {badge} {source_badge}<br/>
                 <span class="trust-badge">★ {offer.store_rating} Rating</span>
             </td>
             <td>
@@ -395,21 +462,22 @@ def render_comparison_table(summary: ComparisonSummary):
                 <span style="font-size: 0.72rem; color: #94a3b8;">{offer.condition}</span>
             </td>
             <td style="font-family: 'JetBrains Mono', monospace; font-weight: 700;">
-                ${offer.current_price:,.2f}
-                {f'<br/><span style="text-decoration: line-through; color: #94a3b8; font-size: 0.78rem;">${offer.original_price:,.2f}</span>' if offer.original_price else ''}
+                {curr_fmt}
+                {orig_html}
+                {coupon_html}
             </td>
             <td style="color: #64748b; font-size: 0.88rem;">
                 {shipping_text}
             </td>
             <td style="font-family: 'JetBrains Mono', monospace; font-weight: 800; font-size: 1.05rem; color: #0f172a;">
-                ${offer.total_cost:,.2f}
+                {total_fmt}
             </td>
             <td>
                 {avail_html}<br/>
                 <span style="font-size: 0.7rem; color: #94a3b8;">Checked: {last_updated}</span>
             </td>
             <td>
-                <span style="background: #f1f5f9; color: #475569; padding: 6px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: not-allowed;" title="Demo link (not an external live store)">
+                <span style="background: #FAF7F2; color: #4A1D2F; border: 1px solid #EED4D8; padding: 6px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 600; cursor: not-allowed;" title="Demo link (not an external live store)">
                     Demo Store ↗
                 </span>
             </td>

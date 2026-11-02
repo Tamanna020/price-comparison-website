@@ -2,35 +2,44 @@
 
 CUSTOM_CSS = """
 <style>
-/* Global Imports & Base Typography */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap');
+/* Global Imports & Base Typography - PriceWise Beauty Editorial Theme */
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 html, body, [class*="css"] {
     font-family: 'Plus+Jakarta+Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
-/* Header & Banner */
+[data-testid="stAppViewContainer"] {
+    background-color: #FAF7F2;
+}
+
+[data-testid="stSidebar"] {
+    background-color: #F6F2EC;
+    border-right: 1px solid #E8DFD5;
+}
+
+/* Header & Beauty Demo Banner */
 .demo-banner {
-    background: linear-gradient(90deg, #1e293b 0%, #334155 100%);
-    border-left: 4px solid #f59e0b;
+    background: linear-gradient(90deg, #302724 0%, #4A1D2F 50%, #5C2237 100%);
+    border-left: 4px solid #D6BC8A;
     border-radius: 8px;
     padding: 10px 16px;
     margin-bottom: 24px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    color: #e2e8f0;
+    color: #FAF7F2;
     font-size: 0.88rem;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+    box-shadow: 0 4px 12px rgba(48, 39, 36, 0.08);
 }
 
 .demo-banner strong {
-    color: #fbbf24;
+    color: #F8E7C9;
     letter-spacing: 0.05em;
     text-transform: uppercase;
     font-size: 0.78rem;
     padding: 2px 8px;
-    background: rgba(245, 158, 11, 0.15);
+    background: rgba(214, 188, 138, 0.2);
     border-radius: 4px;
     margin-right: 8px;
 }
@@ -88,9 +97,9 @@ html, body, [class*="css"] {
 }
 
 .product-card:hover {
-    border-color: #6366f1;
+    border-color: #C98991;
     transform: translateY(-3px);
-    box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 10px 20px -3px rgba(201, 137, 145, 0.18), 0 4px 6px -2px rgba(48, 39, 36, 0.05);
 }
 
 .card-badge-container {
@@ -104,8 +113,9 @@ html, body, [class*="css"] {
     font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
-    color: #6366f1;
-    background: #eef2ff;
+    color: #4A1D2F;
+    background: #F8EDEF;
+    border: 1px solid #EED4D8;
     padding: 3px 8px;
     border-radius: 6px;
     letter-spacing: 0.04em;

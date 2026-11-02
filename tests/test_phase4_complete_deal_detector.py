@@ -467,7 +467,10 @@ def test_p4_12_database_persistence_and_retrieval(p4_test_db):
     """Verify price observations persist to SQLite schema and can be retrieved accurately."""
     test_offer_id = 3
     test_price = 1499.99
-    now_ts = "2026-10-31 12:00:00"
+    # Use a future timestamp beyond seed data so it is guaranteed to be the latest observation
+    base_dt = datetime.now(timezone.utc) + timedelta(days=1)
+    now_ts = base_dt.strftime("%Y-%m-%d %H:%M:%S")
+    fifteen_min_later = (base_dt + timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
 
     # 1. Record observation
     persisted = record_price_observation(
@@ -503,7 +506,7 @@ def test_p4_12_database_persistence_and_retrieval(p4_test_db):
         currency="USD",
         data_source="automated_test",
         data_status="demo",
-        recorded_at="2026-10-31 12:15:00",  # 15 minutes later with same price
+        recorded_at=fifteen_min_later,  # 15 minutes later with same price
         deduplication_window_seconds=3600,
         force=False,
         custom_path=p4_test_db,

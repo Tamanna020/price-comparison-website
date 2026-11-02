@@ -4,7 +4,13 @@ in-stock toggles, session-state preservation, and empty-state handling.
 """
 
 import streamlit as st
-from src.services.product_service import get_products, get_all_categories, get_all_brands
+from src.services.product_service import (
+    get_products,
+    get_all_categories,
+    get_all_brands,
+    get_all_skin_types,
+    get_all_product_types,
+)
 from src.analysis.deal_detector import analyze_product_deal
 from src.ui.components import render_stats_bar, render_product_card
 
@@ -17,6 +23,10 @@ def init_filter_state():
         st.session_state["filter_category"] = "All"
     if "filter_brand" not in st.session_state:
         st.session_state["filter_brand"] = "All"
+    if "filter_skin_type" not in st.session_state:
+        st.session_state["filter_skin_type"] = "All"
+    if "filter_budget" not in st.session_state:
+        st.session_state["filter_budget"] = "All"
     if "filter_sort" not in st.session_state:
         default_sort = "featured"
         user = st.session_state.get("authenticated_user")
@@ -26,14 +36,14 @@ def init_filter_state():
                 uprefs = get_user_preferences(user.id)
                 if uprefs and uprefs.sort_preference:
                     alias_map = {
-                        "best_deal": "featured",
+                        "best_deal": "best_deal",
                         "lowest_price": "price_asc",
                         "highest_price": "price_desc",
                         "name": "title_asc",
                         "name_asc": "title_asc",
                     }
                     candidate = alias_map.get(uprefs.sort_preference, uprefs.sort_preference)
-                    if candidate in ("featured", "price_asc", "price_desc", "title_asc", "title_desc", "savings_desc"):
+                    if candidate in ("featured", "price_asc", "price_desc", "title_asc", "title_desc", "savings_desc", "best_deal"):
                         default_sort = candidate
             except Exception:
                 pass
@@ -47,6 +57,8 @@ def reset_filters():
     st.session_state["filter_search"] = ""
     st.session_state["filter_category"] = "All"
     st.session_state["filter_brand"] = "All"
+    st.session_state["filter_skin_type"] = "All"
+    st.session_state["filter_budget"] = "All"
     st.session_state["filter_sort"] = "featured"
     st.session_state["filter_in_stock_only"] = False
 
@@ -58,25 +70,33 @@ def render_home_view():
     # Top Headline
     st.markdown(
         """
-        <div style="margin-bottom: 16px;">
-            <h1 style="font-size: 2.2rem; font-weight: 800; color: #0f172a; margin-bottom: 6px; letter-spacing: -0.02em;">
-                PriceWise <span style="color: #4f46e5;">AI</span>
+        <div style="margin-bottom: 20px;">
+            <div style="font-size: 0.85rem; font-weight: 700; color: #C98991; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px;">
+                ✨ Discover Beauty • Compare Smarter
+            </div>
+            <h1 style="font-size: 2.4rem; font-weight: 800; color: #302724; margin: 0 0 6px 0; letter-spacing: -0.02em;">
+                PriceWise <span style="color: #4A1D2F;">AI Beauty</span>
             </h1>
-            <p style="font-size: 1.05rem; color: #475569; margin: 0; line-height: 1.5;">
-                Shopping Intelligence Dashboard with <strong>Real Deal Detector™</strong>. Multi-store price comparison, verified variant matching, and historical pricing evaluation.
+            <p style="font-size: 1.05rem; color: #574d49; margin: 0; line-height: 1.5;">
+                Your beauty. Your budget. Your best match. Discover authentic Indian skincare and makeup, compare prices across Nykaa, Tira, Purplle, Amazon India, and Myntra with <strong>Real Deal Detector™</strong>.
             </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # Advisor Quick-Link Banner
+    # Advisor & React Frontend Quick-Link Banner
     col_banner_text, col_banner_btn = st.columns([4, 1])
     with col_banner_text:
         st.markdown(
             """
-            <div style="background: linear-gradient(90deg, #eef2ff 0%, #f5f3ff 100%); border: 1px solid #c7d2fe; border-radius: 8px; padding: 9px 14px; font-size: 0.86rem; color: #3730a3; display: flex; align-items: center; gap: 8px;">
-                <span>🧭</span> <span><strong>New: Smart Purchase Advisor</strong> — Configure your spending budget and use case for explainable product recommendations.</span>
+            <div style="background: linear-gradient(90deg, #FDF7F8 0%, #F8EDEF 100%); border: 1px solid #EED4D8; border-radius: 8px; padding: 10px 14px; font-size: 0.88rem; color: #4A1D2F; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                <div>
+                    <span>✨</span> <strong>PriceWise Beauty Hub:</strong> Smart Purchase Advisor, verified ingredient comparisons, and lowest price intelligence across Indian retailers.
+                </div>
+                <a href="http://localhost:5173" target="_blank" style="display: inline-flex; align-items: center; gap: 4px; background: #4A1D2F; color: #FAF7F2; padding: 4px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; text-decoration: none;">
+                    Launch React Editorial UI ↗
+                </a>
             </div>
             """,
             unsafe_allow_html=True,
@@ -139,6 +159,7 @@ def render_home_view():
 
     sort_options = {
         "featured": "✨ Featured",
+        "best_deal": "🔥 Best Available Deal",
         "price_asc": "💵 Price: Low to High",
         "price_desc": "💎 Price: High to Low",
         "title_asc": "🔤 Name: A to Z",
@@ -159,11 +180,42 @@ def render_home_view():
         if selected_sort != st.session_state["filter_sort"]:
             st.session_state["filter_sort"] = selected_sort
 
-    # Row 2: Secondary Filters & Clear Button
-    col_filter_row1, col_filter_row2 = st.columns([6, 2])
-    with col_filter_row1:
+    # Row 2: Secondary Beauty Filters (Skin Type, Budget Preset, In-Stock, Reset)
+    col_skin, col_budget, col_stock, col_reset = st.columns([2.5, 2.5, 2.5, 2])
+
+    skin_types = ["All"] + get_all_skin_types()
+    with col_skin:
+        skin_index = skin_types.index(st.session_state["filter_skin_type"]) if st.session_state["filter_skin_type"] in skin_types else 0
+        selected_skin = st.selectbox(
+            "Skin Type",
+            options=skin_types,
+            index=skin_index,
+            format_func=lambda s: f"Skin: {s}" if s != "All" else "All Skin Types",
+            key="select_skin_type_box",
+            label_visibility="collapsed",
+        )
+        if selected_skin != st.session_state["filter_skin_type"]:
+            st.session_state["filter_skin_type"] = selected_skin
+            st.rerun()
+
+    budget_options = ["All", "Under ₹500", "₹500 - ₹1,000", "₹1,000 - ₹2,000", "Luxury (₹2,000+)"]
+    with col_budget:
+        budget_index = budget_options.index(st.session_state["filter_budget"]) if st.session_state["filter_budget"] in budget_options else 0
+        selected_budget = st.selectbox(
+            "Budget",
+            options=budget_options,
+            index=budget_index,
+            format_func=lambda b: f"Budget: {b}" if b != "All" else "Any Budget",
+            key="select_budget_box",
+            label_visibility="collapsed",
+        )
+        if selected_budget != st.session_state["filter_budget"]:
+            st.session_state["filter_budget"] = selected_budget
+            st.rerun()
+
+    with col_stock:
         in_stock_checked = st.checkbox(
-            "In-Stock Only (hide fully unavailable items)",
+            "In-Stock Only",
             value=st.session_state["filter_in_stock_only"],
             key="cb_in_stock_only",
         )
@@ -175,22 +227,41 @@ def render_home_view():
         bool(st.session_state["filter_search"].strip())
         or st.session_state["filter_category"] != "All"
         or st.session_state["filter_brand"] != "All"
+        or st.session_state["filter_skin_type"] != "All"
+        or st.session_state["filter_budget"] != "All"
         or st.session_state["filter_sort"] != "featured"
         or st.session_state["filter_in_stock_only"]
     )
 
-    with col_filter_row2:
+    with col_reset:
         if has_active_filters:
-            if st.button("✕ Reset All Filters", use_container_width=True, key="btn_clear_filters"):
+            if st.button("✕ Reset Filters", use_container_width=True, key="btn_clear_filters"):
                 reset_filters()
                 st.rerun()
+
+    # Parse budget into min_price and max_price bounds
+    min_price: float | None = None
+    max_price: float | None = None
+    if st.session_state["filter_budget"] == "Under ₹500":
+        max_price = 500.0
+    elif st.session_state["filter_budget"] == "₹500 - ₹1,000":
+        min_price = 500.0
+        max_price = 1000.0
+    elif st.session_state["filter_budget"] == "₹1,000 - ₹2,000":
+        min_price = 1000.0
+        max_price = 2000.0
+    elif st.session_state["filter_budget"] == "Luxury (₹2,000+)":
+        min_price = 2000.0
 
     # Query products with combined criteria
     products = get_products(
         category=st.session_state["filter_category"],
         brand=st.session_state["filter_brand"],
+        skin_type=st.session_state["filter_skin_type"],
         search_query=st.session_state["filter_search"],
         in_stock_only=st.session_state["filter_in_stock_only"],
+        min_price=min_price,
+        max_price=max_price,
         sort_by=st.session_state["filter_sort"],
     )
 
