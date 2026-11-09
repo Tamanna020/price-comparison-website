@@ -1,0 +1,45 @@
+# PriceWise AI — Controlled Staging Environment (Docker Compose)
+# Runs the identical 3-tier production stack locally or on any cloud VPS (Fly.io, Railway, DigitalOcean).
+
+version: '3.8'
+
+services:
+  # 1. PostgreSQL 16 Staging Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: pricewise-staging-pg-node
+    environment:
+      POSTGRES_USER: pricewise
+      POSTGRES_PASSWORD: pricewise_staging_pass
+      POSTGRES_DB: pricewise_staging
+    ports:
+      - "5433:5432"
+    volumes:
+      - staging_pg_data:/var/lib/postgresql/data
+      - ./data/postgres_migration.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pricewise -d pricewise_staging"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. FastAPI Backend Service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pricewise-staging-backend
+    environment:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql://pricewise:pricewise_staging_pass@postgres:5432/pricewise_staging
+      CORS_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173,https://pricewise-staging.vercel.app"
+      SECRET_KEY: staging_super_secret_key_32_characters_long_min
+      GEMINI_MODEL: gemini-2.5-flash
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  staging_pg_data:

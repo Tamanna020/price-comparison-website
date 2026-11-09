@@ -13,7 +13,6 @@ import { useWishlist } from './hooks/useWishlist';
 import { usePriceTracker } from './hooks/usePriceTracker';
 
 // Components & Pages
-import { CustomCursor } from './components/CustomCursor';
 import { Navbar } from './components/Navbar';
 import { ScrollToTop } from './components/ScrollToTop';
 import { WishlistDrawer } from './components/WishlistDrawer';
@@ -27,6 +26,12 @@ import { WatchlistPage } from './pages/WatchlistPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { RoutinesPage } from './pages/RoutinesPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { BeautyAssistantPage } from './pages/BeautyAssistantPage';
+import { SkinConcernMatcherPage } from './pages/SkinConcernMatcherPage';
+import { IngredientIntelligencePage } from './pages/IngredientIntelligencePage';
+import { ClimateSkincareAdvisorPage } from './pages/ClimateSkincareAdvisorPage';
+import { FoundationMatcherPage } from './pages/FoundationMatcherPage';
+import { AdminVerificationPage } from './pages/AdminVerificationPage';
 
 export const AppContent: React.FC = () => {
   // Navigation & Filter State
@@ -57,9 +62,6 @@ export const AppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-ivory text-espresso-900 font-sans selection:bg-rose-200 selection:text-espresso-950 flex flex-col justify-between">
-      {/* Editorial Custom Cursor for Desktop */}
-      <CustomCursor />
-
       {/* Global Navigation Header */}
       <Navbar
         wishlistCount={wishlistCount}
@@ -96,6 +98,18 @@ export const AppContent: React.FC = () => {
           <Route path="/profile" element={<ProfilePage />} />
 
           <Route path="/routines" element={<RoutinesPage />} />
+
+          <Route path="/beauty-assistant" element={<BeautyAssistantPage />} />
+
+          <Route path="/skin-concerns" element={<SkinConcernMatcherPage />} />
+
+          <Route path="/ingredients" element={<IngredientIntelligencePage />} />
+
+          <Route path="/climate-advisor" element={<ClimateSkincareAdvisorPage />} />
+
+          <Route path="/shade-matcher" element={<FoundationMatcherPage />} />
+
+          <Route path="/admin/verifications" element={<AdminVerificationPage />} />
 
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

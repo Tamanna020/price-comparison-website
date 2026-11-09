@@ -1,0 +1,191 @@
+# PRICEWISE AI — GEMINI FREE TIER OPTIMIZATION SKILL
+
+## OBJECTIVE
+Implement Gemini-powered beauty intelligence features while maintaining full functionality without requiring constant API access. The system must be fully usable when Gemini is unavailable.
+
+## TRIGGER
+Use when implementing Gemini-powered beauty features with caching, rate limiting, and heuristic fallbacks.
+
+## ONE-LINE BEHAVIOR
+Implement Gemini API integration with SQLite caching, per-user rate limiting, quota exhaustion handling, and heuristic fallback — all without exposing API keys or blocking functionality.
+
+## SKILL RULES — ALWAYS FOLLOW
+
+### 1. CACHE FIRST, ASK GEMINI SECOND
+- Always check the SQLite cache (`gemini_cache` table) before making a Gemini API call
+- Cache responses with TTL (default: 168 hours / 1 week)
+- Cache key = SHA-256(prompt + model_name)
+- Never cache responses with extraction_source = "heuristic_fallback"
+
+### 2. RATE LIMITING — PER USER, PER DAY
+- Track requests per user per day in `gemini_rate_limits` table
+- Table schema: (user_id INTEGER, date TEXT, count INTEGER DEFAULT 0, PRIMARY KEY (user_id, date))
+- Default daily limit: 50 requests (configurable via `GEMINI_DAILY_LIMIT` env var)
+- Reset: midnight UTC
+- Never auto-retry after rate limit — return error immediately
+
+### 3. QUOTA EXHAUSTION HANDLING
+- Classify errors: "QUOTA_EXCEEDED", "TIMEOUT", "MODEL_UNAVAILABLE", "AUTH_ERROR"
+- Log error codes to `gemini_token_usage` table without logging API keys or prompts
+- Immediately fall back to heuristic logic on any error
+- Never retry failed requests automatically
+
+### 4. HUMAN-LEVEL FALLBACK (NEVER FAKE DATA)
+- When Gemini is unavailable (no API key, quota exhausted, timeout, model down):
+  - Parse product specs from existing `specs_json` field
+  - Create basic `IngredientInfo` entries from comma-separated key ingredients
+  - Provide heuristic explanations based on known ingredient functions
+  - Mark `extraction_source: "heuristic_fallback"` and `confidence_score: 0.4`
+  - Never invent concentrations, ratings, reviews, or retailer links
+- All 4 Phase 8E features must work identically with or without Gemini
+
+### 5. TOKEN USAGE TRACKING (NO SENSITIVE DATA)
+- Log: user_id, model, prompt_tokens, completion_tokens, total_tokens, success, error_code, requested_at
+- Never log: API keys, prompt content, PII
+- Aggregate stats: total_tokens, total_requests, success_rate per model
+- Use for analytics only — never for pricing or billing decisions
+
+### 6. CONFIGURABLE MODEL VIA `GEMINI_MODEL`
+- Always read `GEMINI_MODEL` from environment (default: `gemini-3.6-flash`)
+- Never hardcode model names in business logic
+- Allow override via `get_beauty_intelligence_service(model_name=...)`
+- Fall back gracefully if model is unavailable
+
+### 7. STRUCTURED JSON RESPONSES
+- All Gemini responses must be parsed as JSON
+- Validate response structure before use
+- Use `re.sub(r"^```json\s*|\s*```$", "", text.strip())` to clean responses
+- Fallback to heuristic if JSON parsing fails
+
+### 8. API ENDPOINT PATTERNS (Phase 8E)
+- `POST /api/beauty/analyze-ingredients/{product_id}` — ingredient analysis
+- `POST /api/beauty/match-skin-concerns` — skin concern matching
+- `POST /api/beauty/find-alternatives/{product_id}` — cheaper alternatives
+- `POST /api/beauty/generate-routine/{AM|PM}` — routine generation
+- `GET /api/beauty/usage` — user usage stats
+- `GET /api/beauty/admin/stats` — admin dashboard (admin only)
+- `POST /api/beauty/cache/clear` — clear expired cache (admin only)
+
+## FILES CREATED
+- `src/services/beauty_intelligence_service.py` — main service (1,252 lines)
+- `src/database/connection.py` — 6 new tables: gemini_cache, gemini_rate_limits, gemini_token_usage, ingredient_analysis_cache, alternative_finder_cache, routine_recommendation_cache
+- `src/api/schemas.py` — 10 new Pydantic models
+- `src/api/main.py` — 7 new API endpoints
+- `tests/test_phase8e_beauty_intelligence.py` — 18 test cases
+
+## LIMITATIONS — ALWAYS DISCLOSE
+- Heuristic fallbacks provide basic ingredient parsing only
+- No live retailer prices without API credentials
+- No medical claims or dermatological advice
+- English-only ingredient names
+- Real-time inventory not checked
+
+## VERSION
+1.0
+
+## MAINTAINER
+PriceWise AI Team
+
+
+## PHASE 8E: BEAUTY INTELLIGENCE IMPLEMENTATION (NOVEMBER 2026)
+
+### Overview
+Implemented Gemini-Powered Beauty Intelligence as Phase 8E of PriceWise AI. Provides four AI-powered features:
+1. Ingredient analysis with compatibility and conflict detection
+2. Skin concern matching with product recommendations
+3. Cheaper alternatives/dupe finder with similarity scoring
+4. AM/PM routine generation with conflict warnings
+
+### CORE SYSTEM ARCHITECTURE
+
+#### Caching Strategy
+- Three-tier cache: `gemini_cache` (raw Gemini responses), `ingredient_analysis_cache` (parsed ingredient data), `routine_recommendation_cache` (routine configurations)
+- All caches use SHA-256 hash of prompt+model as key
+- TTL: 168 hours (1 week) default, configurable
+- Automatic cleanup via `clear_expired_cache()` function
+
+#### Rate Limiting System
+- Per-user daily rate limit via `gemini_rate_limits` table (user_id, date, count)
+- Default limit: 50 requests/day, configurable via `GEMINI_DAILY_LIMIT` env var
+- Reset: midnight UTC
+- All beauty intelligence endpoints share the same limit
+- Never auto-retry after rate limit — return error immediately
+
+#### Token Usage Tracking
+- Log to `gemini_token_usage` table: user_id, model, prompt_tokens, completion_tokens, total_tokens, success, error_code, requested_at
+- Never log: API keys, prompt content, PII
+- Aggregate stats: total_tokens, total_requests, success_rate by model
+- Used for analytics only, not billing decisions
+
+### KEY IMPLEMENTATION DETAILS
+
+#### Ingredient Analysis
+- Parses `Key Ingredients` from product `specs_json`
+- Creates `IngredientInfo` objects with function, benefits, concerns, compatibility
+- Uses Gemini AI when available, heuristic fallback when unavailable
+- `extraction_source: "gemini_model"` or `"heuristic_fallback"`
+- `confidence_score: 0.9` (AI) or `0.4` (heuristic)
+- Never invent concentrations or make medical claims
+
+#### Skin Concern Matching
+- Matches products to concerns: acne, dryness, oiliness, combination, pigmentation, sensitivity, dehydration, dullness, aging
+- Uses ingredient analysis to find products with relevant actives
+- Returns suitability score (0-1) with explanation
+- Uses `offers` table for price data
+- Never guarantees results or diagnoses conditions
+
+#### Alternative Finder
+- Finds cheaper alternatives with similarity scoring
+- Compares: ingredients, formulation, product type, price
+- Returns: original product, alternative, price difference, similarity score, matched attributes, differences
+- `price_verified`: true only when both prices have reliable evidence
+- Never claim products are identical just because they share ingredients
+
+#### Routine Generation
+- AM routine: Cleanse → Tone → Treat → Moisturize → ☀️ SUNSCREEN
+- PM routine: Cleanse → Tone → Treat → Moisturize
+- Detects ingredient conflicts (e.g., Retinol + Vitamin C)
+- Suggests patch test for new actives
+- Budget-aware suggestions using `budget_range` parameter
+- Existing product integration via `existing_products` parameter
+
+### ERROR HANDLING & FALLBACK
+
+#### Error Classification
+- `QUOTA_EXCEEDED`: 429 response, rate limit exceeded
+- `TIMEOUT`: Request timeout or timeout error
+- `MODEL_UNAVAILABLE`: 404 or model not found
+- `AUTH_ERROR`: Invalid API key or authentication failure
+
+#### Fallback Behavior
+- All 4 features (ingredient analysis, concern matching, alternatives, routines) work without Gemini
+- Heuristic fallbacks provide functional, if less detailed, results
+- `extraction_source: "heuristic_fallback"` indicates non-AI results
+- `confidence_score: 0.4` indicates fallback quality level
+- Never fake data, prices, or medical claims
+
+### CONVENTIONS & STYLE
+
+#### Skill Format
+- Skill name: `gemini-beauty-intelligence`
+- Skill trigger: "Use when implementing Gemini-powered beauty intelligence features with caching, rate limiting and heuristic fallbacks."
+- One-line behavior: "Implement Gemini AI features with caching, rate limiting and heuristic fallbacks while maintaining full functionality when AI is unavailable"
+
+#### Supporting Files
+- `references/gemini-beauty-intelligence.md` — Detailed implementation guide
+- `templates/config.yaml` — Configuration template (if needed)
+- `scripts/verify_cache.py` — Cache verification script (optional)
+
+#### Preference Embedding
+- User preference: concise, direct responses without filler
+- Prefer Read-ONLY diagnosis identifying first point of failure before any fix
+- Want short report and explicit STOP when finished
+- Verify identity before killing processes
+- Care about honesty under uncertainty — claim unverified rather than assumed true
+- Expect conclusions tied to concrete evidence (checksums, PIDs, measured values)
+- Flag latent risks separately from active bug rather than blended into it
+
+### VERSION HISTORY
+- **1.0.0** — Initial implementation with 4 features, caching, rate limiting, fallbacks
+- **1.1.0** — Phase 8E enhancement: added routine generation, alternative finder, skin concern matching
+- **1.2.0** — [Future enhancements]

@@ -1,0 +1,43 @@
+# Git & VCS
+.git/
+.github/
+
+# Environment & Secrets (NEVER bake secrets into images)
+.env
+.env.*
+*.env
+*.txt
+
+# Local Database Files & Backups
+data/*.db
+data/*.sqlite3
+data/*.backup*
+data/backups/
+data/evidence_uploads/
+*.db
+
+# Screenshots & Visual Audits
+screenshots/
+
+# Python Cache & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node Modules & Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/src/
+frontend/public/
+frontend/package.json
+frontend/package-lock.json
+
+# Markdown Docs & Reports
+*.md
+nul

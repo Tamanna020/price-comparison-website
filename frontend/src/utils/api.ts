@@ -19,7 +19,7 @@ import { findProductBySlugOrId } from './slug';
 
 // Read API base URL from Vite environment or default to local FastAPI port
 const getBaseApiUrl = (): string => {
-  const envUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+  const envUrl = ((import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL) as string | undefined)?.trim();
   if (envUrl) {
     return envUrl;
   }
@@ -1007,5 +1007,1229 @@ export async function getPersonalizedRecommendations(limit = 8): Promise<{
     return { recommendations: [], error: err instanceof Error ? err.message : 'Network error' };
   }
 }
+
+// =====================================================================
+// Phase 8E: Beauty Intelligence Types & Endpoints
+// =====================================================================
+
+export interface IngredientInfo {
+  name: string;
+  function?: string;
+  benefits: string[];
+  concerns?: string[];
+  compatible_with?: string[];
+  avoid_with?: string[];
+  concentration_range?: string | null;
+  safety_rating?: string | null;
+  source?: string;
+  purpose?: string;
+  safety?: string;
+  description?: string;
+}
+
+export interface IngredientAnalysisResponse {
+  product_id: number;
+  product_name: string;
+  ingredients: IngredientInfo[];
+  key_actives?: string[];
+  allergens_irritants?: string[];
+  potential_conflicts?: string[];
+  routine_order_recommendation?: string[];
+  compatibility_notes?: string[];
+  usage_instructions?: string | null;
+  extraction_source?: string;
+  source?: string;
+  confidence_score?: number;
+  routine_compatibility?: Record<string, string[]>;
+  cached?: boolean;
+  model_name?: string | null;
+}
+
+export interface SkinConcernMatch {
+  product_id: number;
+  product_name: string;
+  brand: string;
+  category: string;
+  price: number;
+  primary_concern?: string;
+  suitability_score: number;
+  reasons?: string[];
+  explanation?: string;
+  key_ingredients?: string[];
+  matched_ingredients?: string[];
+  cautions?: string[];
+  source?: string;
+}
+
+export interface SkinConcernAnalysisResponse {
+  skin_type?: string;
+  concerns?: string[];
+  matches: SkinConcernMatch[];
+  general_advice?: string[];
+  ingredients_to_look_for?: string[];
+  ingredients_to_avoid?: string[];
+  has_live_data?: boolean;
+  source?: string;
+  cached?: boolean;
+  model_name?: string | null;
+}
+
+export interface AlternativeProduct {
+  alternative_product_id?: number;
+  product_id?: number;
+  alternative_product_name?: string;
+  product_name?: string;
+  name?: string;
+  alternative_brand?: string;
+  brand?: string;
+  alternative_price?: number;
+  price?: number;
+  original_product_price?: number;
+  price_difference?: number;
+  price_difference_pct?: number;
+  price_verified?: boolean;
+  savings_amount?: number;
+  savings_percentage?: number;
+  similarity_score: number;
+  suitability_score: number;
+  explanation?: string;
+  recommendation_reason?: string;
+  matched_attributes?: string[];
+  differences?: string[];
+  shared_key_ingredients?: string[];
+  ingredient_comparison?: string[];
+  tradeoffs?: string[];
+  source?: string;
+}
+
+export interface AlternativeFinderResponse {
+  original_product_id?: number;
+  original_product_name?: string;
+  alternatives: AlternativeProduct[];
+  extraction_source?: string;
+  source?: string;
+  cached?: boolean;
+  model_name?: string | null;
+}
+
+export interface RoutineStepRecommendation {
+  step_number: number;
+  step_name: string;
+  category?: string;
+  product_id?: number | null;
+  product_name: string;
+  brand?: string | null;
+  price?: number | null;
+  product_type?: string;
+  key_ingredients?: string[];
+  why_recommended?: string;
+  instructions?: string;
+  usage_instructions?: string;
+  precautions?: string;
+  frequency?: string;
+  wait_time_minutes?: number | null;
+  source?: string;
+}
+
+export interface RoutineRecommendationResponse {
+  routine_type: string;
+  skin_type: string;
+  concerns: string[];
+  steps: RoutineStepRecommendation[];
+  total_estimated_cost?: number;
+  routine_summary?: string;
+  generation_source?: string;
+  sunscreen_required?: boolean;
+  source?: string;
+  cached?: boolean;
+  model_name?: string | null;
+}
+
+export interface BeautyIntelligenceUsageResponse {
+  user_id?: number;
+  requests_today?: number;
+  daily_limit?: number;
+  resets_at?: string;
+  rate_limit?: {
+    daily_quota?: number;
+    used_today?: number;
+    today_count?: number;
+    remaining?: number;
+    resets_in_hours?: number;
+  };
+}
+
+export interface BeautyIntelligenceAdminStatsResponse {
+  total_requests: number;
+  successful_requests: number;
+  cache_hits: number;
+  fallbacks: number;
+}
+
+export async function analyzeProductIngredients(
+  productId: number,
+  forceRefresh = false
+): Promise<{ success: boolean; data?: IngredientAnalysisResponse; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(
+      `${API_BASE_URL}/api/beauty/analyze-ingredients/${productId}?force_refresh=${forceRefresh}`,
+      { headers: getAuthHeaders() }
+    );
+    if (!res.ok) return { success: false, error: 'Failed to analyze ingredients' };
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+export async function matchSkinConcerns(
+  concernsOrPayload: string[] | { skin_type: string; concerns: string[]; budget_range?: [number, number] },
+  skinType?: string,
+  budgetRange?: [number, number]
+): Promise<{ success: boolean; data?: SkinConcernAnalysisResponse; error?: string }> {
+  try {
+    let payload;
+    if (Array.isArray(concernsOrPayload)) {
+      payload = {
+        concerns: concernsOrPayload,
+        skin_type: skinType || 'all',
+        budget_range: budgetRange,
+      };
+    } else {
+      payload = concernsOrPayload;
+    }
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/beauty/match-concerns`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return { success: false, error: 'Failed to match skin concerns' };
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+export async function findProductAlternatives(
+  productId: number,
+  optionsOrMaxBudget?: { max_price_ratio?: number; min_similarity?: number } | number
+): Promise<{ success: boolean; data?: AlternativeFinderResponse; error?: string }> {
+  try {
+    let url = `${API_BASE_URL}/api/beauty/find-alternatives/${productId}`;
+    if (typeof optionsOrMaxBudget === 'number') {
+      url += `?max_budget=${optionsOrMaxBudget}`;
+    }
+    const res = await fetchWithTimeout(url, { headers: getAuthHeaders() });
+    if (!res.ok) return { success: false, error: 'Failed to find product alternatives' };
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+export async function generateBeautyRoutine(
+  routineType: 'AM' | 'PM' | string,
+  options: {
+    skin_type: string;
+    skin_concerns: string[];
+    existing_products?: number[];
+    budget_range?: [number, number] | number[];
+  }
+): Promise<{ success: boolean; data?: RoutineRecommendationResponse; error?: string }> {
+  try {
+    const payload = {
+      routine_type: routineType,
+      skin_type: options.skin_type,
+      skin_concerns: options.skin_concerns,
+      existing_products: options.existing_products,
+      budget_range: options.budget_range,
+    };
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/beauty/generate-routine`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return { success: false, error: 'Failed to generate beauty routine' };
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+export async function getBeautyUsage(): Promise<{ success: boolean; data?: BeautyIntelligenceUsageResponse; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/beauty/usage`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) return { success: false, error: 'Failed to fetch usage' };
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+export async function getBeautyAdminStats(days = 30): Promise<{ success: boolean; data?: BeautyIntelligenceAdminStatsResponse; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/beauty/admin/stats?days=${days}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) return { success: false, error: 'Failed to fetch admin stats' };
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+export async function clearBeautyCache(): Promise<{ success: boolean; data?: { deleted_entries: number }; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/beauty/cache/clear`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) return { success: false, error: 'Failed to clear cache' };
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+// =====================================================================
+// Phase 9: Advanced Price Intelligence, History, Deals & Alerts
+// =====================================================================
+
+export interface PricePointDto {
+  date: string;
+  price: number;
+  retailer_name: string;
+  recorded_at: string;
+  data_source: string;
+  data_status: string;
+}
+
+export interface ProductPriceAnalyticsResponse {
+  product_id: number;
+  product_slug: string;
+  product_title: string;
+  window_days: number;
+  points: PricePointDto[];
+  lowest_recorded_price: number | null;
+  highest_recorded_price: number | null;
+  average_recorded_price: number | null;
+  current_lowest_price: number | null;
+  price_movement_pct: number | null;
+  price_trend: 'downward' | 'upward' | 'stable' | 'volatile' | 'insufficient_data';
+  observation_count: number;
+  is_sufficient_history: boolean;
+  currency: string;
+  history_data_status: string;
+  is_simulated: boolean;
+  disclaimer: string;
+}
+
+export interface CouponValidation {
+  code: string;
+  is_valid: boolean;
+  discount_amount: number;
+  discount_pct: number;
+  min_spend: number;
+  description: string;
+  rejection_reason?: string | null;
+  expires_at?: string | null;
+  is_expired: boolean;
+  source: string;
+  is_simulated?: boolean;
+  disclaimer?: string;
+}
+
+export interface TotalPurchaseCostBreakdown {
+  retailer_name: string;
+  base_price: number;
+  shipping_fee?: number | null;
+  is_shipping_known: boolean;
+  shipping_label: string;
+  coupon_applied?: CouponValidation | null;
+  final_payable_price: number;
+  is_final_exact: boolean;
+  payable_state_note: string;
+  reference_mrp?: number | null;
+  mrp_discount?: number;
+  confirmed_savings: number;
+  simulated_coupon_savings?: number;
+  coupon_savings: number;
+  total_potential_savings: number;
+  genuine_verified_market_savings?: number;
+  currency: string;
+  data_status: string;
+  calculated_at: string;
+}
+
+export interface DealFactorExplanation {
+  factor_name: string;
+  points_awarded: number;
+  max_points: number;
+  explanation: string;
+}
+
+export interface DealIntelligenceResponse {
+  product_id: number;
+  product_title: string;
+  retailer_name: string;
+  current_price: number;
+  deal_score: number;
+  deal_grade: string;
+  deal_classification: string;
+  is_simulated_deal: boolean;
+  source_status: string;
+  verified_deal_eligible: boolean;
+  confidence_score: number;
+  factors: DealFactorExplanation[];
+  landed_cost_breakdown: TotalPurchaseCostBreakdown;
+  summary_verdict: string;
+}
+
+export interface PriceTrackingItem {
+  id: number;
+  user_id: number;
+  product_id: number;
+  product_title: string;
+  target_price: number;
+  current_price: number;
+  status: string;
+  alert_trigger_type: string;
+  note?: string | null;
+  created_at: string;
+  last_observed_price?: number | null;
+  last_alert_at?: string | null;
+}
+
+export interface PriceAlertItem {
+  id: number;
+  user_id: number;
+  product_id: number;
+  product_title: string;
+  alert_type: string;
+  observed_price: number;
+  previous_price?: number | null;
+  target_price: number;
+  message: string;
+  created_at: string;
+  is_read: boolean;
+  is_demo: boolean;
+}
+
+/**
+ * Fetch product price history across 7, 30, or 90 days.
+ */
+export async function fetchProductPriceHistory(
+  slugOrId: string | number,
+  windowDays = 30
+): Promise<{ success: boolean; data?: ProductPriceAnalyticsResponse; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(
+      `${API_BASE_URL}/api/products/${slugOrId}/price-history?window_days=${windowDays}`
+    );
+    if (!res.ok) {
+      return { success: false, error: 'Failed to retrieve price history.' };
+    }
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+/**
+ * Fetch transparent deal score and intelligence.
+ */
+export async function fetchDealIntelligence(
+  slugOrId: string | number,
+  retailer?: string,
+  couponCode?: string
+): Promise<{ success: boolean; data?: DealIntelligenceResponse; error?: string }> {
+  try {
+    const params = new URLSearchParams();
+    if (retailer) params.append('retailer', retailer);
+    if (couponCode) params.append('coupon_code', couponCode);
+    const query = params.toString() ? `?${params.toString()}` : '';
+
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/products/${slugOrId}/deal-intelligence${query}`);
+    if (!res.ok) {
+      return { success: false, error: 'Failed to retrieve deal intelligence.' };
+    }
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+/**
+ * Calculate landed purchase cost breakdown.
+ */
+export async function calculateLandedCost(
+  slugOrId: string | number,
+  payload: {
+    retailer_name?: string;
+    coupon_code?: string;
+    custom_price?: number;
+    custom_shipping?: number;
+  }
+): Promise<{ success: boolean; data?: TotalPurchaseCostBreakdown; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/products/${slugOrId}/total-cost`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      return { success: false, error: 'Failed to calculate total purchase cost.' };
+    }
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+/**
+ * Fetch authenticated user's active tracked products.
+ */
+export async function fetchTrackedProducts(): Promise<{
+  success: boolean;
+  data?: PriceTrackingItem[];
+  error?: string;
+}> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/price-tracking`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      return { success: false, error: 'Failed to load tracked products' };
+    }
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+/**
+ * Add or update tracked product with target price.
+ */
+export async function addTrackedProduct(
+  productId: number,
+  targetPrice: number,
+  note?: string,
+  alertTriggerType = 'target_or_drop'
+): Promise<{ success: boolean; message?: string; tracking_id?: number; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/price-tracking`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        product_id: productId,
+        target_price: targetPrice,
+        note,
+        alert_trigger_type: alertTriggerType,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.detail || 'Failed to save tracking rule.' };
+    }
+    return { success: true, message: data.message, tracking_id: data.tracking_id };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+/**
+ * Remove tracked product.
+ */
+export async function removeTrackedProduct(
+  productIdOrTrackingId: number
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/price-tracking/${productIdOrTrackingId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      return { success: false, error: data.detail || 'Failed to remove tracked product' };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+/**
+ * Fetch authenticated user's price alerts.
+ */
+export async function fetchPriceAlerts(unreadOnly = false): Promise<{
+  success: boolean;
+  data?: PriceAlertItem[];
+  error?: string;
+}> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/price-alerts?unread_only=${unreadOnly}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      return { success: false, error: 'Failed to load price alerts' };
+    }
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+/**
+ * Mark a price alert as read.
+ */
+export async function markPriceAlertRead(alertId: number): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/price-alerts/${alertId}/read`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      return { success: false, error: 'Failed to mark alert as read' };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+// ============================================================================
+// Phase 10: Advanced Beauty Intelligence Types & API
+// ============================================================================
+
+export interface MasterIngredient {
+  id: string;
+  name: string;
+  inci_name: string;
+  category: string;
+  description: string;
+  what_it_does: string;
+  why_used: string;
+  benefits: string[];
+  potential_irritations: string[];
+  skin_suitability: string[];
+  evidence_level: 'established' | 'moderate' | 'preliminary';
+  optimal_ph: string;
+  typical_concentration: string;
+}
+
+export interface IngredientInteractionWarning {
+  ingredient_a: string;
+  ingredient_b: string;
+  severity: 'high_irritation_risk' | 'formulation_incompatibility' | 'moderate_caution' | 'synergistic_pair';
+  title: string;
+  explanation: string;
+  scientific_rationale: string;
+  recommendation: string;
+  routine_separation_advice: string;
+}
+
+export interface IngredientCompatibilityResponse {
+  analyzed_ingredients: Array<{
+    id: string;
+    name: string;
+    category: string;
+    evidence_level: string;
+  }>;
+  overall_status: 'compatible' | 'moderate' | 'caution';
+  safety_score: number;
+  summary: string;
+  warnings: IngredientInteractionWarning[];
+  synergies: IngredientInteractionWarning[];
+  total_conflicts: number;
+  total_synergies: number;
+  medical_disclaimer: string;
+}
+
+export interface RoutineCheckerStepInput {
+  step_name: string;
+  product_name?: string;
+  custom_product_name?: string;
+  key_ingredients?: string[];
+}
+
+export interface RoutineConflictItem {
+  routine: 'AM' | 'PM';
+  type: string;
+  severity: string;
+  title: string;
+  description: string;
+  recommendation: string;
+}
+
+export interface ActiveOverloadItem {
+  ingredient: string;
+  count: number;
+  risk: string;
+  recommendation: string;
+}
+
+export interface RoutineCheckerResponse {
+  overall_score: number;
+  irritation_risk: 'Low' | 'Moderate' | 'High';
+  safety_rating: string;
+  total_conflicts: number;
+  conflicts: RoutineConflictItem[];
+  active_overloads: ActiveOverloadItem[];
+  optimization_steps: string[];
+  am_active_count: number;
+  pm_active_count: number;
+  sunscreen_compliant: boolean;
+  medical_disclaimer: string;
+}
+
+export interface ClimateProfile {
+  code: string;
+  name: string;
+  regions: string;
+  temperature_range: string;
+  humidity_level: string;
+  skin_impact: string;
+  cleanser_guidance: string;
+  moisturizer_guidance: string;
+  sunscreen_guidance: string;
+  hydration_strategy: string;
+  makeup_base_guidance: string;
+  recommended_actives: string[];
+  avoid_or_caution: string[];
+}
+
+export interface ClimateSkincareResponse {
+  climate_profile: ClimateProfile;
+  user_context: {
+    skin_type: string;
+    concerns: string[];
+  };
+  matched_catalog_products: Array<{
+    id: number;
+    title: string;
+    brand: string;
+    category: string;
+    product_type: string;
+    image_url: string;
+    key_ingredients: string[];
+    relevance_score: number;
+    climate_rationale: string;
+  }>;
+  medical_disclaimer: string;
+}
+
+export interface FoundationCatalogMatch {
+  product_id: number;
+  product_title: string;
+  brand: string;
+  image_url: string;
+  catalog_shade: string;
+  recommended_shade_code: string;
+  finish: string;
+  confidence_score: number;
+  match_label: string;
+  oxidation_advisory: string;
+  mac_equivalent: string;
+  loreal_equivalent: string;
+  fenty_equivalent: string;
+}
+
+export interface FoundationMatchResponse {
+  user_profile: {
+    skin_depth: string;
+    undertone: string;
+    coverage_preference?: string;
+    finish_preference?: string;
+    reference_shade_provided?: string;
+  };
+  shade_benchmark: {
+    description: string;
+    mac_shade: string;
+    maybelline_shade: string;
+    loreal_shade: string;
+    fenty_shade: string;
+  };
+  matches: FoundationCatalogMatch[];
+  undertone_guidance: string;
+  disclaimer: string;
+}
+
+export interface AdvancedDiscoveryProduct {
+  id: number;
+  title: string;
+  brand: string;
+  category: string;
+  brand_tier: string;
+  price: number;
+  reference_mrp: number;
+  image_url: string;
+  key_ingredients: string[];
+  skin_type: string;
+  finish?: string;
+  match_score: number;
+  matching_tags: string[];
+  is_dupe_candidate: boolean;
+}
+
+export interface AdvancedDiscoveryResponse {
+  total_results: number;
+  products: AdvancedDiscoveryProduct[];
+  active_filters: Record<string, unknown>;
+}
+
+/**
+ * Fetch master active ingredients encyclopedia.
+ */
+export async function fetchMasterIngredients(): Promise<{
+  success: boolean;
+  data?: { total: number; ingredients: MasterIngredient[] };
+  error?: string;
+}> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/beauty/ingredients`);
+    if (!res.ok) {
+      return { success: false, error: 'Failed to fetch ingredients' };
+    }
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+/**
+ * Check pairwise ingredient compatibility and clash warnings.
+ */
+export async function checkIngredientCompatibility(ingredients: string[]): Promise<{
+  success: boolean;
+  data?: IngredientCompatibilityResponse;
+  error?: string;
+}> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/beauty/ingredient-compatibility`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ingredients }),
+    });
+    if (!res.ok) {
+      return { success: false, error: 'Failed to evaluate compatibility' };
+    }
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+/**
+ * Analyze AM and PM routine safety, duplicate active overload, and SPF compliance.
+ */
+export async function checkRoutineSafety(
+  amSteps: RoutineCheckerStepInput[],
+  pmSteps: RoutineCheckerStepInput[],
+  userSkinType = 'Combination'
+): Promise<{
+  success: boolean;
+  data?: RoutineCheckerResponse;
+  error?: string;
+}> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/beauty/routine-checker`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        am_steps: amSteps,
+        pm_steps: pmSteps,
+        user_skin_type: userSkinType,
+      }),
+    });
+    if (!res.ok) {
+      return { success: false, error: 'Failed to analyze routine safety' };
+    }
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+/**
+ * Fetch Indian climate-tailored routine and matched catalog products.
+ */
+export async function fetchClimateRecommendations(
+  climateCode: string,
+  skinType = 'Combination',
+  concerns: string[] = []
+): Promise<{
+  success: boolean;
+  data?: ClimateSkincareResponse;
+  error?: string;
+}> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/beauty/climate-recommendations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        climate_code: climateCode,
+        skin_type: skinType,
+        concerns,
+      }),
+    });
+    if (!res.ok) {
+      return { success: false, error: 'Failed to fetch climate recommendations' };
+    }
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+/**
+ * Match foundation depth, undertone, and oxidation profile.
+ */
+export async function matchFoundationShade(params: {
+  skinDepth: string;
+  undertone: string;
+  coverage?: string;
+  finish?: string;
+  referenceBrand?: string;
+  referenceShade?: string;
+}): Promise<{
+  success: boolean;
+  data?: FoundationMatchResponse;
+  error?: string;
+}> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/beauty/foundation-matcher`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        skin_depth: params.skinDepth,
+        undertone: params.undertone,
+        coverage: params.coverage || 'Medium',
+        finish: params.finish || 'Matte',
+        reference_brand: params.referenceBrand,
+        reference_shade: params.referenceShade,
+      }),
+    });
+    if (!res.ok) {
+      return { success: false, error: 'Failed to match foundation shade' };
+    }
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+/**
+ * Advanced multi-criteria catalog search and filtering.
+ */
+export async function searchAdvancedDiscovery(
+  filters: Record<string, string | number | undefined>
+): Promise<{
+  success: boolean;
+  data?: AdvancedDiscoveryResponse;
+  error?: string;
+}> {
+  try {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, val]) => {
+      if (val !== undefined && val !== null && val !== '') {
+        params.append(key, String(val));
+      }
+    });
+    const url = `${API_BASE_URL}/api/beauty/advanced-discovery?${params.toString()}`;
+    const res = await fetchWithTimeout(url);
+    if (!res.ok) {
+      return { success: false, error: 'Failed to perform discovery search' };
+    }
+    const data = await res.json();
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+/* =========================================================================
+ * PHASE 11B: Hybrid Price Collection, Evidence & Admin Verification API
+ * ========================================================================= */
+
+export interface RetailerPolicyStatus {
+  retailer_key: string;
+  retailer_name: string;
+  domain: string;
+  store_id: number;
+  policy_status: string;
+  circuit_breaker_active: boolean;
+  explanation: string;
+  permitted_methods: string[];
+}
+
+export interface ProductRetailerSource {
+  offer_id: number;
+  retailer_name: string;
+  store_id: number;
+  product_url: string;
+  current_price: number;
+  original_price?: number | null;
+  discount_pct: number;
+  currency: string;
+  variant_name: string;
+  availability: string;
+  verification_status: string;
+  last_verified_at?: string | null;
+  last_checked_at?: string | null;
+  policy_status: string;
+  requires_manual_verification: boolean;
+}
+
+export interface AdminVerificationItem {
+  id: number;
+  user_id: number;
+  user_name?: string;
+  user_email?: string;
+  product_id: number;
+  product_title?: string;
+  product_brand?: string;
+  retailer: string;
+  product_url: string;
+  user_submitted_price?: number;
+  submitted_price?: number;
+  submitted_mrp?: number;
+  verified_price?: number;
+  verified_mrp?: number;
+  size_volume?: string;
+  shade?: string;
+  formulation?: string;
+  notes?: string;
+  status: string;
+  verification_status?: string;
+  submitted_at?: string;
+  created_at?: string;
+  evidence?: Array<{
+    id: number;
+    evidence_url: string;
+    evidence_type: string;
+    description?: string;
+    uploaded_at: string;
+  }>;
+}
+
+export async function getRetailerPolicies(): Promise<RetailerPolicyStatus[]> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/prices/retailer-status`);
+    if (res.ok) {
+      const data = await res.json();
+      return data.retailers || [];
+    }
+  } catch {
+    // fallback
+  }
+  return [];
+}
+
+export async function getProductRetailerSources(productId: number): Promise<ProductRetailerSource[]> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/prices/sources/${productId}`);
+    if (res.ok) {
+      const data = await res.json();
+      return data.sources || [];
+    }
+  } catch {
+    // fallback
+  }
+  return [];
+}
+
+export async function collectProductPrices(productId: number, forceRefresh = false): Promise<any> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/prices/collect/${productId}?force_refresh=${forceRefresh}`, {
+      method: 'POST',
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch {
+    // fallback
+  }
+  return null;
+}
+
+export async function uploadEvidenceFile(file: File): Promise<{ success: boolean; evidenceUrl?: string; error?: string }> {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const token = getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_BASE_URL}/api/verification/upload-evidence`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.detail || 'Upload failed' };
+    }
+    return { success: true, evidenceUrl: data.evidence_url };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+export async function submitProductManualVerification(payload: {
+  product_id: number;
+  retailer: string;
+  product_url: string;
+  user_submitted_price?: number;
+  size_volume?: string;
+  shade?: string;
+  formulation?: string;
+  notes?: string;
+  evidence_url?: string;
+}): Promise<{ success: boolean; data?: any; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/verification/manual`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.detail || 'Submission failed' };
+    }
+    return { success: true, data };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+export async function getAdminVerificationQueue(): Promise<{
+  success: boolean;
+  manualVerifications: AdminVerificationItem[];
+  priceCorrections: AdminVerificationItem[];
+  totalPending: number;
+  error?: string;
+}> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/admin/verifications`, {
+      headers: getAuthHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, manualVerifications: [], priceCorrections: [], totalPending: 0, error: data.detail || 'Failed to fetch queue' };
+    }
+    return {
+      success: true,
+      manualVerifications: data.pending_manual_verifications || [],
+      priceCorrections: data.pending_price_corrections || [],
+      totalPending: data.total_pending || 0,
+    };
+  } catch (err: unknown) {
+    return { success: false, manualVerifications: [], priceCorrections: [], totalPending: 0, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+export async function approveManualVerificationRequest(
+  requestId: number,
+  payload: { verified_price?: number; verified_mrp?: number; notes?: string }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/admin/verifications/${requestId}/approve`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.detail || 'Approval failed' };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+export async function rejectManualVerificationRequest(
+  requestId: number,
+  rejectionReason: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/admin/verifications/${requestId}/reject`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ rejection_reason: rejectionReason }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.detail || 'Rejection failed' };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+export async function approvePriceCorrectionSubmission(
+  submissionId: number,
+  payload: { verified_price?: number; verified_mrp?: number; notes?: string }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/admin/price-corrections/${submissionId}/approve`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.detail || 'Approval failed' };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+export async function rejectPriceCorrectionSubmission(
+  submissionId: number,
+  rejectionReason: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE_URL}/api/admin/price-corrections/${submissionId}/reject`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ rejection_reason: rejectionReason }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { success: false, error: data.detail || 'Rejection failed' };
+    }
+    return { success: true };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
+
 
 

@@ -13,6 +13,9 @@ import {
   Heart,
   Palette,
   ExternalLink,
+  Brain,
+  Zap,
+  Clock,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import type { UserProfile, RecommendedProduct } from '../types';
@@ -21,6 +24,8 @@ import {
   updateUserProfile,
   resetUserProfile,
   getPersonalizedRecommendations,
+  getBeautyUsage,
+  type BeautyIntelligenceUsageResponse,
 } from '../utils/api';
 
 const SKIN_TYPES = [
@@ -93,6 +98,29 @@ export const ProfilePage: React.FC = () => {
   const [recommendations, setRecommendations] = useState<RecommendedProduct[]>([]);
   const [loadingRecs, setLoadingRecs] = useState(false);
 
+  // Gemini AI Usage Quota State (Phase 8F Task 5)
+  const [usageData, setUsageData] = useState<BeautyIntelligenceUsageResponse | null>(null);
+  const [loadingUsage, setLoadingUsage] = useState(false);
+  const [usageError, setUsageError] = useState<string | null>(null);
+
+  const loadUsage = useCallback(async () => {
+    if (!user) return;
+    setLoadingUsage(true);
+    setUsageError(null);
+    try {
+      const res = await getBeautyUsage();
+      if (res.success && res.data) {
+        setUsageData(res.data);
+      } else {
+        setUsageError(res.error || 'Usage data currently unavailable');
+      }
+    } catch {
+      setUsageError('Unable to connect to intelligence quota service');
+    } finally {
+      setLoadingUsage(false);
+    }
+  }, [user]);
+
   const loadProfile = useCallback(async () => {
     setLoading(true);
     const res = await getUserProfile();
@@ -127,10 +155,11 @@ export const ProfilePage: React.FC = () => {
     if (user) {
       loadProfile();
       loadRecommendations();
+      loadUsage();
     } else {
       setLoading(false);
     }
-  }, [user, loadProfile, loadRecommendations]);
+  }, [user, loadProfile, loadRecommendations, loadUsage]);
 
   const toggleConcern = (concernId: string) => {
     setSkinConcerns((prev) =>
@@ -467,6 +496,101 @@ export const ProfilePage: React.FC = () => {
 
         {/* Sidebar Controls (Right 1 Column) */}
         <div className="space-y-8">
+          {/* Phase 8F Task 5: Gemini AI Intelligence Quota Card */}
+          <section className="bg-white/90 border border-rose-200/90 rounded-3xl p-6 shadow-soft-lift glass-panel space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-rose-600">
+                  <Brain className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-base font-editorial font-bold text-espresso-950">
+                    Gemini AI Quota
+                  </h2>
+                  <span className="text-[10px] text-espresso-500 font-sans block">
+                    Daily Beauty Intelligence Limit
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={loadUsage}
+                disabled={loadingUsage}
+                className="p-1.5 rounded-lg border border-rose-100 hover:bg-rose-50 text-espresso-500 hover:text-rose-600 transition-colors cursor-pointer"
+                title="Refresh Quota"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${loadingUsage ? 'animate-spin text-rose-500' : ''}`} />
+              </button>
+            </div>
+
+            {loadingUsage && !usageData ? (
+              <div className="animate-pulse space-y-2 py-2">
+                <div className="h-4 bg-rose-100 rounded-md w-3/4" />
+                <div className="h-2 bg-rose-50 rounded-full w-full" />
+              </div>
+            ) : usageError && !usageData ? (
+              <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-800 space-y-1">
+                <div className="flex items-center space-x-1.5 font-bold">
+                  <Zap className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Heuristic Fallback Active</span>
+                </div>
+                <p className="text-[11px] text-amber-700 leading-relaxed">
+                  {usageError}. Instant rule-based ingredient, dupe, and routine recommendations remain available 24/7.
+                </p>
+              </div>
+            ) : usageData ? (
+              <div className="space-y-3.5 text-xs">
+                {/* Usage Counters */}
+                <div className="flex items-baseline justify-between pt-1">
+                  <div>
+                    <span className="text-2xl font-bold font-sans text-espresso-950">
+                      {Math.max(0, (usageData.daily_limit || 50) - (usageData.rate_limit?.today_count || 0))}
+                    </span>
+                    <span className="text-espresso-500 text-[11px] ml-1">requests remaining</span>
+                  </div>
+                  <span className="text-xs text-espresso-400 font-medium">
+                    {usageData.rate_limit?.today_count || 0} / {usageData.daily_limit || 50} used
+                  </span>
+                </div>
+
+                {/* Progress Bar */}
+                {(() => {
+                  const used = usageData.rate_limit?.today_count || 0;
+                  const limit = usageData.daily_limit || 50;
+                  const pct = Math.min(100, Math.round((used / limit) * 100));
+                  const barColor =
+                    pct > 90 ? 'bg-rose-500' : pct > 70 ? 'bg-amber-500' : 'bg-emerald-500';
+                  return (
+                    <div className="w-full bg-rose-100/60 rounded-full h-2 overflow-hidden">
+                      <div
+                        className={`h-full ${barColor} transition-all duration-500 rounded-full`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  );
+                })()}
+
+                {/* Model & Source Badge */}
+                <div className="p-3 rounded-2xl bg-ivory-50 border border-rose-100 flex items-center justify-between text-[11px]">
+                  <span className="text-espresso-600 font-medium flex items-center space-x-1.5">
+                    <Sparkles className="w-3 h-3 text-rose-500" />
+                    <span>Engine:</span>
+                  </span>
+                  <span className="font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                    Gemini 3.6 Flash
+                  </span>
+                </div>
+
+                {/* Reset Notice */}
+                <div className="flex items-center space-x-1.5 text-[10px] text-espresso-400">
+                  <Clock className="w-3 h-3 shrink-0" />
+                  <span>Quota refreshes daily at midnight UTC (05:30 IST)</span>
+                </div>
+              </div>
+            ) : null}
+          </section>
+
           {/* Budget Range (INR) */}
           <section className="bg-white/80 border border-rose-100 rounded-3xl p-6 shadow-xs glass-panel">
             <h2 className="text-base font-editorial font-bold text-espresso-900 mb-1 flex items-center space-x-2">

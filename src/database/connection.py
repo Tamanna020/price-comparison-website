@@ -1,8 +1,115 @@
+import os
 import sqlite3
 from contextlib import contextmanager
-from typing import Generator
+from typing import Generator, Any
 from pathlib import Path
-from src.config import DATABASE_PATH, SCHEMA_PATH
+from src.config import DATABASE_PATH, DATABASE_URL, SCHEMA_PATH
+
+
+def get_database_engine_type() -> str:
+    """Return 'postgresql' if DATABASE_URL is configured for postgres, else 'sqlite'."""
+    url = (os.environ.get("DATABASE_URL") or DATABASE_URL or "").strip()
+    if url.startswith("postgres://") or url.startswith("postgresql://"):
+        return "postgresql"
+    return "sqlite"
+
+
+class DualRow(dict):
+    """Row wrapper supporting both column name indexing and integer position indexing."""
+    def __init__(self, cols, vals):
+        super().__init__(zip(cols, vals))
+        self._vals = tuple(vals)
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._vals[key]
+        return super().__getitem__(key)
+
+
+def dual_row_factory(cursor):
+    if cursor.description is None:
+        return lambda vals: vals
+    cols = [d.name for d in cursor.description]
+    def make_row(vals):
+        return DualRow(cols, vals)
+    return make_row
+
+
+class PostgresCompatCursor:
+    """Cursor wrapper adapting SQLite qmark '?' parameter style and lastrowid to PostgreSQL."""
+    def __init__(self, raw_cur, raw_conn):
+        self._cur = raw_cur
+        self._conn = raw_conn
+
+    def execute(self, query: str, params=None):
+        clean_q = query
+        if params is not None and "?" in clean_q:
+            clean_q = clean_q.replace("?", "%s")
+        if params is not None:
+            return self._cur.execute(clean_q, params)
+        return self._cur.execute(clean_q)
+
+    def executemany(self, query: str, params_seq):
+        clean_q = query
+        if "?" in clean_q:
+            clean_q = clean_q.replace("?", "%s")
+        return self._cur.executemany(clean_q, params_seq)
+
+    @property
+    def lastrowid(self):
+        try:
+            with self._conn.cursor() as cur:
+                cur.execute("SELECT lastval();")
+                row = cur.fetchone()
+                return row[0] if row else None
+        except Exception:
+            return None
+
+    def fetchone(self):
+        return self._cur.fetchone()
+
+    def fetchall(self):
+        return self._cur.fetchall()
+
+    def fetchmany(self, size=None):
+        return self._cur.fetchmany(size) if size else self._cur.fetchmany()
+
+    @property
+    def description(self):
+        return self._cur.description
+
+    @property
+    def rowcount(self):
+        return self._cur.rowcount
+
+    def close(self):
+        return self._cur.close()
+
+    def __iter__(self):
+        return iter(self._cur)
+
+
+class PostgresCompatConnection:
+    """Connection wrapper adapting psycopg to standard DB-API row factory & cursor behavior."""
+    def __init__(self, raw_conn):
+        self._conn = raw_conn
+
+    def cursor(self):
+        raw_cur = self._conn.cursor(row_factory=dual_row_factory)
+        return PostgresCompatCursor(raw_cur, self._conn)
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        return self._conn.close()
+
+    def execute(self, query: str, params=None):
+        cur = self.cursor()
+        return cur.execute(query, params)
 
 
 def get_db_path(custom_path: str | None = None) -> Path:
@@ -13,20 +120,49 @@ def get_db_path(custom_path: str | None = None) -> Path:
 
 
 @contextmanager
-def get_connection(custom_path: str | None = None) -> Generator[sqlite3.Connection, None, None]:
-    """Provide a transactional database connection with row factory enabled."""
-    db_path = get_db_path(custom_path)
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+def get_connection(custom_path: str | None = None) -> Generator[Any, None, None]:
+    """Provide a transactional database connection with row factory enabled (SQLite or PostgreSQL)."""
+    db_engine = get_database_engine_type()
+    if db_engine == "postgresql" and not custom_path:
+        db_url = (os.environ.get("DATABASE_URL") or DATABASE_URL).strip()
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+        try:
+            import psycopg
+            raw_conn = psycopg.connect(db_url)
+            conn = PostgresCompatConnection(raw_conn)
+        except ImportError:
+            try:
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
+                raw_conn = psycopg2.connect(db_url, cursor_factory=RealDictCursor)
+                conn = PostgresCompatConnection(raw_conn)
+            except ImportError:
+                raise RuntimeError(
+                    "PostgreSQL DATABASE_URL is configured, but neither 'psycopg' nor 'psycopg2' is installed. "
+                    "Install 'psycopg' for production PostgreSQL connectivity."
+                )
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+    else:
+        db_path = get_db_path(custom_path)
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON;")
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
 
 def migrate_db(custom_path: str | None = None) -> None:
@@ -378,6 +514,192 @@ def migrate_db(custom_path: str | None = None) -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_routine_items_routine ON user_routine_items(routine_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_routine_items_step ON user_routine_items(routine_id, step_number)")
 
+        # 13. Phase 8D: Manual Verification Requests
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS manual_verification_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                retailer TEXT NOT NULL,
+                product_url TEXT NOT NULL,
+                user_submitted_price REAL,
+                size_volume TEXT,
+                shade TEXT,
+                formulation TEXT,
+                notes TEXT,
+                status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'verified', 'rejected', 'restricted', 'unavailable')),
+                verification_status TEXT CHECK(verification_status IN ('LIVE_VERIFIED', 'MANUAL_VERIFIED', 'CACHED', 'HISTORICAL', 'POSSIBLE_MATCH', 'RESTRICTED', 'UNAVAILABLE', 'DEMO')),
+                verified_price REAL,
+                verified_mrp REAL,
+                verified_discount_pct REAL,
+                verified_shipping_fee REAL,
+                verified_size_volume TEXT,
+                verified_shade TEXT,
+                verified_formulation TEXT,
+                verified_product_name TEXT,
+                verified_brand TEXT,
+                verification_notes TEXT,
+                source_url TEXT,
+                submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                verified_at TIMESTAMP,
+                reviewed_at TIMESTAMP,
+                reviewed_by INTEGER,
+                rejection_reason TEXT,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+                FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_manual_verification_user ON manual_verification_requests(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_manual_verification_product ON manual_verification_requests(product_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_manual_verification_status ON manual_verification_requests(status)")
+
+        # 14. Phase 8D: Price Correction Submissions (Report Price)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS price_correction_submissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                retailer TEXT NOT NULL,
+                product_url TEXT NOT NULL,
+                submitted_price REAL NOT NULL,
+                submitted_mrp REAL,
+                size_volume TEXT,
+                shade TEXT,
+                formulation TEXT,
+                notes TEXT,
+                evidence_url TEXT,
+                status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected', 'merged')),
+                reviewed_at TIMESTAMP,
+                reviewed_by INTEGER,
+                rejection_reason TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+                FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_correction_user ON price_correction_submissions(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_correction_product ON price_correction_submissions(product_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_price_correction_status ON price_correction_submissions(status)")
+
+        # 15. Phase 8D: Evidence References
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS evidence_references (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reference_type TEXT NOT NULL CHECK(reference_type IN ('manual_verification', 'price_correction')),
+                reference_id INTEGER NOT NULL,
+                evidence_url TEXT NOT NULL,
+                evidence_type TEXT CHECK(evidence_type IN ('screenshot', 'receipt', 'product_page', 'other')),
+                description TEXT,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                uploaded_by INTEGER NOT NULL,
+                FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_evidence_reference ON evidence_references(reference_type, reference_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_evidence_uploaded_by ON evidence_references(uploaded_by)")
+
+
+
+        # 13. Phase 8E: Gemini Response Cache
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS gemini_cache (
+                cache_key TEXT PRIMARY KEY,
+                prompt TEXT NOT NULL,
+                model TEXT NOT NULL,
+                response TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gemini_cache_expires ON gemini_cache(expires_at)")
+
+        # 14. Phase 8E: Gemini Rate Limits
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS gemini_rate_limits (
+                user_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                count INTEGER DEFAULT 0,
+                PRIMARY KEY (user_id, date)
+            )
+            """
+        )
+
+        # 15. Phase 8E: Gemini Token Usage Tracking
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS gemini_token_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                model TEXT NOT NULL,
+                prompt_tokens INTEGER NOT NULL,
+                completion_tokens INTEGER NOT NULL,
+                total_tokens INTEGER NOT NULL,
+                success INTEGER NOT NULL,
+                error_code TEXT,
+                requested_at TEXT NOT NULL
+            )
+            """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_usage_user ON gemini_token_usage(user_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_usage_date ON gemini_token_usage(requested_at)")
+
+        # 16. Phase 8E: Ingredient Analysis Cache
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ingredient_analysis_cache (
+                product_id INTEGER PRIMARY KEY,
+                product_name TEXT NOT NULL,
+                analysis_json TEXT NOT NULL,
+                source TEXT NOT NULL,
+                confidence_score REAL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+            )
+            """
+        )
+
+        # 17. Phase 8E: Alternative Finder Cache
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS alternative_finder_cache (
+                original_product_id INTEGER NOT NULL,
+                criteria_hash TEXT NOT NULL,
+                result_json TEXT NOT NULL,
+                source TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (original_product_id, criteria_hash),
+                FOREIGN KEY (original_product_id) REFERENCES products(id) ON DELETE CASCADE
+            )
+            """
+        )
+
+        # 18. Phase 8E: Routine Recommendation Cache
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS routine_recommendation_cache (
+                user_id INTEGER NOT NULL,
+                routine_type TEXT NOT NULL,
+                criteria_hash TEXT NOT NULL,
+                result_json TEXT NOT NULL,
+                source TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (user_id, routine_type, criteria_hash),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+            """
+        )
+
 
 def init_db(custom_path: str | None = None) -> None:
     """Initialize database tables using schema.sql and apply migrations."""
@@ -392,5 +714,3 @@ def init_db(custom_path: str | None = None) -> None:
         conn.executescript(schema_sql)
 
     migrate_db(custom_path)
-
-

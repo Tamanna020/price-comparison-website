@@ -40,3 +40,25 @@ export const findProductBySlugOrId = (products: Product[], slugOrId: string): Pr
   });
 };
 
+/**
+ * Safely parses a product ID (e.g. "prod-1", "prod-01", "1", 1) into a clean integer for backend APIs.
+ * Returns a fallback (default 1) if unparseable.
+ */
+export const toNumericProductId = (id: string | number | undefined | null, fallback = 1): number => {
+  if (id == null) return fallback;
+  if (typeof id === 'number') return isNaN(id) ? fallback : id;
+  const cleaned = id.toString().replace(/^prod-?/i, '').trim();
+  const parsed = parseInt(cleaned, 10);
+  return isNaN(parsed) ? fallback : parsed;
+};
+
+/**
+ * Normalizes a product ID into standard frontend string format (e.g. "prod-1").
+ */
+export const toFrontendProductId = (id: string | number | undefined | null): string => {
+  if (typeof id === 'string' && id.startsWith('prod-')) return id;
+  const num = toNumericProductId(id);
+  return `prod-${num}`;
+};
+
+

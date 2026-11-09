@@ -41,6 +41,8 @@ export const DiscoveryHomePage: React.FC<DiscoveryHomePageProps> = ({
   const [selectedBrand, setSelectedBrand] = useState<string | 'all'>('all');
   const [selectedSkinType, setSelectedSkinType] = useState<string | 'all'>('all');
   const [selectedBudget, setSelectedBudget] = useState<'all' | 'under-500' | '500-1000' | '1000-2500' | 'above-2500'>('all');
+  const [selectedIngredient, setSelectedIngredient] = useState<string | 'all'>('all');
+  const [selectedFinish, setSelectedFinish] = useState<string | 'all'>('all');
   const [sortBy, setSortBy] = useState<'featured' | 'price-asc' | 'price-desc' | 'name-asc' | 'rating' | 'best-deal'>('featured');
 
   // Extract all distinct brands
@@ -82,6 +84,20 @@ export const DiscoveryHomePage: React.FC<DiscoveryHomePageProps> = ({
       if (selectedBudget === '1000-2500' && (product.price < 1000 || product.price > 2500)) return false;
       if (selectedBudget === 'above-2500' && product.price < 2500) return false;
 
+      if (selectedIngredient !== 'all') {
+        const ingMatch = product.keyIngredients.some((i) =>
+          i.toLowerCase().includes(selectedIngredient.toLowerCase())
+        );
+        if (!ingMatch) return false;
+      }
+
+      if (selectedFinish !== 'all') {
+        const finishMatch =
+          product.name.toLowerCase().includes(selectedFinish.toLowerCase()) ||
+          product.description.toLowerCase().includes(selectedFinish.toLowerCase());
+        if (!finishMatch) return false;
+      }
+
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchesName = product.name.toLowerCase().includes(q);
@@ -107,7 +123,7 @@ export const DiscoveryHomePage: React.FC<DiscoveryHomePageProps> = ({
       }
       return (b.isTrending ? 1 : 0) - (a.isTrending ? 1 : 0);
     });
-  }, [activeCategory, activeSubcategory, selectedBrand, selectedSkinType, selectedBudget, searchQuery, sortBy]);
+  }, [activeCategory, activeSubcategory, selectedBrand, selectedSkinType, selectedBudget, selectedIngredient, selectedFinish, searchQuery, sortBy]);
 
   const bestDeals = useMemo(() => {
     return PRODUCTS_DATA.filter((p) => p.isBestDeal || (p.originalPrice && p.originalPrice > p.price));
@@ -126,6 +142,8 @@ export const DiscoveryHomePage: React.FC<DiscoveryHomePageProps> = ({
     setSelectedBrand('all');
     setSelectedSkinType('all');
     setSelectedBudget('all');
+    setSelectedIngredient('all');
+    setSelectedFinish('all');
     setSearchQuery('');
     setSortBy('featured');
   };
@@ -136,6 +154,8 @@ export const DiscoveryHomePage: React.FC<DiscoveryHomePageProps> = ({
     selectedBrand !== 'all' ||
     selectedSkinType !== 'all' ||
     selectedBudget !== 'all' ||
+    selectedIngredient !== 'all' ||
+    selectedFinish !== 'all' ||
     searchQuery.trim() ||
     sortBy !== 'featured'
   );
@@ -202,6 +222,69 @@ export const DiscoveryHomePage: React.FC<DiscoveryHomePageProps> = ({
           </div>
         </div>
 
+        {/* Phase 10: Beauty Intelligence Quick Access Suite */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mb-6">
+          <button
+            onClick={() => navigate('/ingredients')}
+            className="p-4 rounded-2xl bg-white border border-rose-200/80 hover:border-rose-400 transition-all text-left shadow-soft-lift flex items-start space-x-3 group"
+          >
+            <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform text-rose-600 font-bold text-lg">
+              🧪
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold tracking-wider text-rose-600 block">
+                Clinical Matrix
+              </span>
+              <h3 className="font-serif font-bold text-sm text-espresso-900 group-hover:text-rose-600 transition-colors">
+                Ingredient Safety & Clashes
+              </h3>
+              <p className="text-[11px] text-espresso-500 line-clamp-1 mt-0.5">
+                AM/PM overload checker & Retinol/AHA conflict matrix
+              </p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => navigate('/climate-advisor')}
+            className="p-4 rounded-2xl bg-white border border-rose-200/80 hover:border-rose-400 transition-all text-left shadow-soft-lift flex items-start space-x-3 group"
+          >
+            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform text-blue-600 font-bold text-lg">
+              🌦️
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold tracking-wider text-blue-600 block">
+                Regional Care
+              </span>
+              <h3 className="font-serif font-bold text-sm text-espresso-900 group-hover:text-rose-600 transition-colors">
+                Indian Climate Skincare
+              </h3>
+              <p className="text-[11px] text-espresso-500 line-clamp-1 mt-0.5">
+                Humidity, winter dryness, and AC indoor texture advice
+              </p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => navigate('/shade-matcher')}
+            className="p-4 rounded-2xl bg-white border border-rose-200/80 hover:border-rose-400 transition-all text-left shadow-soft-lift flex items-start space-x-3 group"
+          >
+            <div className="w-10 h-10 rounded-xl bg-champagne-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform text-champagne-700 font-bold text-lg">
+              🎨
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold tracking-wider text-champagne-700 block">
+                South Asian Undertones
+              </span>
+              <h3 className="font-serif font-bold text-sm text-espresso-900 group-hover:text-rose-600 transition-colors">
+                Foundation Shade Matcher
+              </h3>
+              <p className="text-[11px] text-espresso-500 line-clamp-1 mt-0.5">
+                Olive/warm depth matching & sebum oxidation guidance
+              </p>
+            </div>
+          </button>
+        </div>
+
         {/* Search & Multi-Filter Control Strip */}
         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-rose-200/90 shadow-soft-lift mb-6 space-y-4">
           {/* Row 1: Search Bar with Clear Button */}
@@ -227,7 +310,7 @@ export const DiscoveryHomePage: React.FC<DiscoveryHomePageProps> = ({
           </div>
 
           {/* Row 2: Secondary Dropdown Filters */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-1">
             {/* Brand Filter */}
             <div className="relative">
               <label className="text-[10px] font-bold uppercase tracking-wider text-espresso-400 block mb-1">
@@ -255,10 +338,49 @@ export const DiscoveryHomePage: React.FC<DiscoveryHomePageProps> = ({
                 onChange={(e) => setSelectedSkinType(e.target.value)}
                 className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-rose-200 bg-ivory-50 text-espresso-800 font-medium focus:outline-hidden focus:border-rose-400 cursor-pointer"
               >
-                <option value="all">Any Skin Type</option>
+                <option value="all">Any Skin</option>
                 {skinTypes.map((st) => (
                   <option key={st} value={st}>{st}</option>
                 ))}
+              </select>
+            </div>
+
+            {/* Hero Ingredient Filter */}
+            <div className="relative">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-rose-500 block mb-1">
+                Active Ingredient
+              </label>
+              <select
+                value={selectedIngredient}
+                onChange={(e) => setSelectedIngredient(e.target.value)}
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-rose-200 bg-ivory-50 text-espresso-800 font-medium focus:outline-hidden focus:border-rose-400 cursor-pointer"
+              >
+                <option value="all">All Actives</option>
+                <option value="niacinamide">Niacinamide</option>
+                <option value="vitamin c">Vitamin C</option>
+                <option value="hyaluronic">Hyaluronic Acid</option>
+                <option value="salicylic">Salicylic Acid</option>
+                <option value="ceramide">Ceramides</option>
+                <option value="retinol">Retinol</option>
+                <option value="snail">Snail Mucin</option>
+              </select>
+            </div>
+
+            {/* Formulation / Finish Filter */}
+            <div className="relative">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-espresso-400 block mb-1">
+                Texture / Finish
+              </label>
+              <select
+                value={selectedFinish}
+                onChange={(e) => setSelectedFinish(e.target.value)}
+                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-rose-200 bg-ivory-50 text-espresso-800 font-medium focus:outline-hidden focus:border-rose-400 cursor-pointer"
+              >
+                <option value="all">All Finishes</option>
+                <option value="matte">Matte</option>
+                <option value="gel">Cooling Gel</option>
+                <option value="dewy">Dewy / Hydrating</option>
+                <option value="satin">Satin</option>
               </select>
             </div>
 

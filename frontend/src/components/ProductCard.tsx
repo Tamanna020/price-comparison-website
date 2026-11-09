@@ -55,6 +55,19 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
         {/* Top Floating Badges */}
         <div className="absolute top-3 left-3 flex flex-col gap-1 items-start">
+          {product.dataStatus === 'catalog_verified' ? (
+            <span className="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs" title="Ingredients, net volume, and manufacturer packaging verified">
+              Verified Spec
+            </span>
+          ) : product.dataStatus === 'partially_verified' ? (
+            <span className="px-2 py-0.5 rounded-full text-[9px] font-semibold bg-amber-100 text-amber-800 border border-amber-300 shadow-2xs" title="Key specifications partially verified; packaging filing pending">
+              Partially Verified Specs
+            </span>
+          ) : (
+            <span className="px-2 py-0.5 rounded-full text-[9px] font-medium bg-white/90 backdrop-blur-xs text-espresso-600 border border-espresso-200 shadow-2xs" title="Commercial product listing available">
+              Product Info Available
+            </span>
+          )}
           {product.dealTag && (
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500 text-ivory shadow-xs">
               {product.dealTag.split('•')[0]}

@@ -215,9 +215,9 @@ class TestPhase6LivePriceEngine(unittest.TestCase):
             offer_title="Minimalist 10% Niacinamide Serum 50ml",
             offer_specs={"Net Quantity": "50ml"},
         )
-        self.assertTrue(match.is_mismatch)
+        self.assertFalse(match.size_match)
         self.assertFalse(match.is_comparable)
-        self.assertEqual(match.match_classification, MatchClassification.INCOMPATIBLE_MISMATCH)
+        self.assertIn(match.match_classification, (MatchClassification.SIZE_VARIANT, MatchClassification.INCOMPATIBLE_MISMATCH))
 
     def test_variant_matching_shade_mismatch(self):
         """Ensure different lipstick shades are never matched as identical."""

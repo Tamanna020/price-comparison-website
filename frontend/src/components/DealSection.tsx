@@ -22,15 +22,15 @@ export const DealSection: React.FC<DealSectionProps> = ({
         {/* Section Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
           <div>
-            <div className="inline-flex items-center space-x-1.5 text-xs font-bold uppercase tracking-wider text-rose-500 bg-rose-100/70 px-3 py-1 rounded-full mb-2">
-              <Tag className="w-3.5 h-3.5" />
-              <span>Verified Market Arbitrage</span>
+            <div className="inline-flex items-center space-x-1.5 text-xs font-bold uppercase tracking-wider text-amber-700 bg-amber-100/80 px-3 py-1 rounded-full mb-2 border border-amber-200">
+              <Tag className="w-3.5 h-3.5 text-amber-600" />
+              <span>Catalog Demo Deals</span>
             </div>
             <h2 className="font-editorial text-3xl sm:text-5xl font-bold text-espresso-800 tracking-tight">
-              Today's Best Beauty Deals
+              Featured Beauty Deals <span className="text-sm font-sans font-normal text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 align-middle">DEMO</span>
             </h2>
             <p className="text-espresso-600 text-sm sm:text-base mt-2 max-w-xl">
-              Curated verified price drops across India’s leading beauty platforms. Discover authentic products marked down to their 30-day lows.
+              Simulated price drop detection demonstrating automated market comparison across beauty catalog products.
             </p>
           </div>
 

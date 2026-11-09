@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Heart,
@@ -6,21 +6,44 @@ import {
   ArrowLeft,
   Share2,
   CheckCircle2,
-  Sparkles,
+  Info,
   Star,
   AlertTriangle,
+  Sparkles,
+  DollarSign,
+  Brain,
+  Tag,
 } from 'lucide-react';
 
 import { PRODUCTS_DATA } from '../data/products';
-import { ALTERNATIVES_DATA } from '../data/alternatives';
-import { findProductBySlugOrId, generateProductSlug } from '../utils/slug';
+import { findProductBySlugOrId, generateProductSlug, toNumericProductId } from '../utils/slug';
 import { PriceHistoryChart } from '../components/PriceHistoryChart';
+import { DealScoreCard } from '../components/DealScoreCard';
 import { PriceTrackingModal } from '../components/PriceTrackingModal';
-import { BeautyUsageGuide } from '../components/BeautyUsageGuide';
 import { ReviewIntelligenceHub } from '../components/ReviewIntelligenceHub';
 import { LiveRetailerPriceComparison } from '../components/LiveRetailerPriceComparison';
+import { IngredientAnalysisSection } from '../components/IngredientAnalysisSection';
+import { AlternativesSection } from '../components/AlternativesSection';
+import { BeautyUsageGuide } from '../components/BeautyUsageGuide';
 import { useWishlist } from '../hooks/useWishlist';
 import { usePriceTracker } from '../hooks/usePriceTracker';
+
+type DetailSectionId = 'overview' | 'pricing' | 'ingredients' | 'alternatives' | 'reviews';
+
+interface NavSectionItem {
+  id: DetailSectionId;
+  label: string;
+  shortLabel: string;
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+const DETAIL_SECTIONS: NavSectionItem[] = [
+  { id: 'overview', label: 'Overview & Usage', shortLabel: 'Overview', icon: Sparkles },
+  { id: 'pricing', label: 'Live Price Comparison', shortLabel: 'Prices', icon: DollarSign },
+  { id: 'ingredients', label: 'Ingredient Intelligence', shortLabel: 'Ingredients', icon: Brain },
+  { id: 'alternatives', label: 'Cheaper Dupes & Alternatives', shortLabel: 'Alternatives', icon: Tag },
+  { id: 'reviews', label: 'Reviews & Community', shortLabel: 'Reviews', icon: Star },
+];
 
 export const ProductDetailPage: React.FC = () => {
   const { slugOrId } = useParams<{ slugOrId: string }>();
@@ -30,14 +53,47 @@ export const ProductDetailPage: React.FC = () => {
   const { isWishlisted, toggleWishlist } = useWishlist();
   const { isTracking, getTrackedRecord, startTracking, stopTracking } = usePriceTracker();
 
-  // Modal State
+  // Modal & Interactive State
   const [isTrackerModalOpen, setIsTrackerModalOpen] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [activeSection, setActiveSection] = useState<DetailSectionId>('overview');
 
   // Lookup product
   const product = useMemo(() => {
     return findProductBySlugOrId(PRODUCTS_DATA, slugOrId || '');
   }, [slugOrId]);
+
+  // Smooth scroll to section
+  const scrollToSection = useCallback((sectionId: DetailSectionId) => {
+    setActiveSection(sectionId);
+    const element = document.getElementById(`section-${sectionId}`);
+    if (element) {
+      const navOffset = 118; // Offset for sticky breadcrumb + sticky sub-nav
+      const elementPosition = element.getBoundingClientRect().top + window.pageYOffset;
+      window.scrollTo({
+        top: Math.max(0, elementPosition - navOffset),
+        behavior: 'smooth',
+      });
+    }
+  }, []);
+
+  // Update active section on scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollPosition = window.scrollY + 140;
+      for (let i = DETAIL_SECTIONS.length - 1; i >= 0; i--) {
+        const sectionId = DETAIL_SECTIONS[i].id;
+        const el = document.getElementById(`section-${sectionId}`);
+        if (el && el.offsetTop <= scrollPosition) {
+          setActiveSection(sectionId);
+          break;
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // Polished 404 Not Found State
   if (!product) {
@@ -58,7 +114,7 @@ export const ProductDetailPage: React.FC = () => {
         <div className="pt-4 flex flex-col sm:flex-row items-center gap-3">
           <button
             onClick={() => navigate('/')}
-            className="px-6 py-3 rounded-xl bg-espresso-800 hover:bg-espresso-950 text-ivory text-xs font-bold tracking-wide transition-all shadow-xs flex items-center space-x-2"
+            className="px-6 py-3 rounded-xl bg-espresso-800 hover:bg-espresso-950 text-ivory text-xs font-bold tracking-wide transition-all shadow-xs flex items-center space-x-2 cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Return to Product Discovery</span>
@@ -68,14 +124,10 @@ export const ProductDetailPage: React.FC = () => {
     );
   }
 
-  // Linked alternative dupe
-  const matchedDupe = ALTERNATIVES_DATA.find(
-    (d) => d.originalProductId === product.id || d.alternativeProductId === product.id
-  );
-
   const isTracked = isTracking(product.id);
   const trackingRecord = getTrackedRecord(product.id);
   const wishlisted = isWishlisted(product.id);
+  const numericProductId = product.dbId || toNumericProductId(product.id);
 
   const handleShare = () => {
     const canonicalSlug = product.slug || generateProductSlug(product);
@@ -88,9 +140,9 @@ export const ProductDetailPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-ivory text-espresso-900 pb-20">
-      {/* Breadcrumbs & Navigation Bar */}
+      {/* Breadcrumbs Top Bar */}
       <div className="border-b border-rose-100 bg-white/60 backdrop-blur-xs sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           {/* Breadcrumbs */}
           <nav className="flex items-center space-x-2 text-xs text-espresso-500 overflow-x-auto">
             <Link to="/" className="hover:text-rose-600 transition-colors shrink-0">
@@ -109,7 +161,7 @@ export const ProductDetailPage: React.FC = () => {
           {/* Quick Back Action */}
           <button
             onClick={() => navigate('/')}
-            className="px-3 py-1.5 rounded-lg bg-ivory-100 hover:bg-ivory-200 text-espresso-700 text-xs font-semibold flex items-center space-x-1.5 transition-colors shrink-0"
+            className="px-3 py-1.5 rounded-lg bg-ivory-100 hover:bg-ivory-200 text-espresso-700 text-xs font-semibold flex items-center space-x-1.5 transition-colors shrink-0 cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Back to Catalog</span>
@@ -117,176 +169,257 @@ export const ProductDetailPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10 space-y-10">
-        {/* Main Product Hero Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left Column: Image & Size */}
-          <div className="lg:col-span-5 space-y-4">
-            <div className="aspect-square w-full rounded-3xl overflow-hidden bg-white border border-rose-200/90 shadow-luxury-card relative">
-              <img
-                src={product.image}
-                alt={product.name}
-                className="w-full h-full object-cover object-center"
-              />
-
-              {/* Floating Badges */}
-              <div className="absolute top-4 left-4 flex flex-col gap-1.5">
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-espresso-900 text-champagne-300 shadow-xs">
-                  {product.brandTier}
-                </span>
-                {product.dealTag && (
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500 text-ivory shadow-xs">
-                    {product.dealTag}
-                  </span>
-                )}
-              </div>
-
-              {/* Demo Data Label */}
-              <div className="absolute bottom-4 left-4">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white/90 backdrop-blur-xs text-espresso-700 border border-rose-100">
-                  DEMO DATA • INDIAN RETAILERS
-                </span>
-              </div>
-            </div>
-
-            {/* Size & Variant Notice */}
-            <div className="bg-white p-3.5 rounded-2xl border border-rose-100 flex items-center justify-between text-xs text-espresso-600">
-              <span>Standard Package Size:</span>
-              <strong className="text-espresso-900 font-sans">{product.quantity}</strong>
-            </div>
-
-            <div className="text-[11px] text-sage-800 bg-sage-50 border border-sage-200/80 p-3 rounded-2xl flex items-center space-x-2">
-              <CheckCircle2 className="w-4 h-4 text-sage-600 shrink-0" />
-              <span>Exact size ({product.quantity}) and authentic formulation verified for comparison.</span>
-            </div>
-          </div>
-
-          {/* Right Column: Meta, Pricing, & Action CTAs */}
-          <div className="lg:col-span-7 space-y-6">
-            <div>
-              <div className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-rose-500 mb-1">
-                <span>{product.brand}</span>
-                <span>•</span>
-                <span>{product.subcategory}</span>
-              </div>
-
-              <h1 className="font-editorial text-3xl sm:text-4xl font-bold text-espresso-950 leading-tight">
-                {product.name}
-              </h1>
-
-              {/* Rating */}
-              {product.rating && (
-                <div className="flex items-center space-x-2 mt-2">
-                  <div className="flex text-champagne-500">
-                    <Star className="w-4 h-4 fill-champagne-500" />
-                    <span className="text-xs font-bold text-espresso-800 ml-1.5">{product.rating}</span>
-                  </div>
-                  <span className="text-xs text-espresso-400">
-                    ({product.reviewCount?.toLocaleString('en-IN')} verified customer reviews)
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Price Box */}
-            <div className="bg-white p-5 rounded-3xl border border-rose-200/80 shadow-soft-lift space-y-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-espresso-400 block">
-                Lowest Available Offer
-              </span>
-
-              <div className="flex items-baseline space-x-3">
-                <span className="text-3xl sm:text-4xl font-sans font-extrabold text-espresso-950">
-                  ₹{product.price.toLocaleString('en-IN')}
-                </span>
-
-                {product.originalPrice && product.originalPrice > product.price && (
-                  <span className="text-base font-sans text-espresso-400 line-through">
-                    ₹{product.originalPrice.toLocaleString('en-IN')}
-                  </span>
-                )}
-
-                {product.originalPrice && product.originalPrice > product.price && (
-                  <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
-                    Save ₹{(product.originalPrice - product.price).toLocaleString('en-IN')} (
-                    {Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)}% OFF)
-                  </span>
-                )}
-              </div>
-
-              {/* Action Buttons: Wishlist, Price Alert, Share */}
-              <div className="pt-2 flex flex-wrap gap-2.5">
+      {/* Task 1: Sticky Product Intelligence Sub-Navigation Bar */}
+      <div className="sticky top-11 z-25 bg-ivory/90 backdrop-blur-md border-b border-rose-100/90 py-2.5 shadow-2xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center space-x-2 overflow-x-auto no-scrollbar scroll-smooth">
+            {DETAIL_SECTIONS.map((sec) => {
+              const Icon = sec.icon;
+              const isActive = activeSection === sec.id;
+              return (
                 <button
-                  type="button"
-                  onClick={() => toggleWishlist(product.id)}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center space-x-2 transition-all border ${wishlisted
-                      ? 'bg-rose-50 text-rose-600 border-rose-300'
-                      : 'bg-white hover:bg-rose-50/60 text-espresso-700 border-rose-200'
-                    }`}
+                  key={sec.id}
+                  onClick={() => scrollToSection(sec.id)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center space-x-1.5 cursor-pointer shrink-0 ${
+                    isActive
+                      ? 'bg-rose-500 text-ivory shadow-xs font-bold'
+                      : 'bg-white/90 hover:bg-rose-50/80 text-espresso-700 border border-rose-200/60'
+                  }`}
+                  aria-current={isActive ? 'true' : undefined}
                 >
-                  <Heart className={`w-4 h-4 ${wishlisted ? 'fill-rose-500 text-rose-500' : ''}`} />
-                  <span>{wishlisted ? 'Saved in Wishlist' : 'Add to Wishlist'}</span>
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-ivory' : 'text-rose-500'}`} />
+                  <span className="hidden md:inline">{sec.label}</span>
+                  <span className="md:hidden">{sec.shortLabel}</span>
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => setIsTrackerModalOpen(true)}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center space-x-2 transition-all border ${isTracked
-                      ? 'bg-sage-50 text-sage-800 border-sage-300'
-                      : 'bg-espresso-800 hover:bg-espresso-950 text-ivory border-espresso-900'
-                    }`}
-                >
-                  <Bell className="w-4 h-4" />
-                  <span>
-                    {isTracked ? `Tracking (₹${trackingRecord?.targetPrice})` : 'Set Price-Drop Alert'}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleShare}
-                  className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-ivory-100 text-espresso-600 border border-rose-200 text-xs font-semibold flex items-center space-x-1.5 transition-colors"
-                  title="Copy shareable link"
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>{copiedUrl ? 'Copied URL!' : 'Share'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Description */}
-            <p className="text-sm text-espresso-700 leading-relaxed">
-              {product.description}
-            </p>
-
-            {/* Suitability Pills */}
-            <div className="flex flex-wrap gap-2 text-xs">
-              {product.skinType && (
-                <div className="px-3 py-1.5 rounded-xl bg-sage-50 border border-sage-200 text-sage-800">
-                  <strong>Skin Suitability:</strong> {product.skinType}
-                </div>
-              )}
-              {product.finish && (
-                <div className="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800">
-                  <strong>Finish / Texture:</strong> {product.finish}
-                </div>
-              )}
-            </div>
+              );
+            })}
           </div>
         </div>
+      </div>
 
-        {/* Phase 6: Automatic Multi-Retailer Live Price Comparison (No Manual Button) */}
-        <LiveRetailerPriceComparison
-          productId={product.id.startsWith('prod-') ? undefined : Number(product.id)}
-          slug={product.slug || slugOrId || ''}
-          productName={product.name}
-          brand={product.brand}
-          targetVariant={product.quantity}
-          fallbackOffers={product.storeOffers}
-        />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 space-y-12">
+        {/* SECTION 1: Overview */}
+        <section id="section-overview" className="scroll-mt-32 space-y-8">
+          {/* Main Product Hero Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            {/* Left Column: Image & Size */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="aspect-square w-full rounded-3xl overflow-hidden bg-white border border-rose-200/90 shadow-luxury-card relative">
+                <img
+                  src={product.image}
+                  alt={product.name}
+                  className="w-full h-full object-cover object-center"
+                />
 
-        {/* Price History & Trends Section */}
-        <section className="space-y-3">
+                {/* Floating Badges */}
+                <div className="absolute top-4 left-4 flex flex-col gap-1.5">
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-espresso-900 text-champagne-300 shadow-xs">
+                    {product.brandTier}
+                  </span>
+                  {product.dealTag && (
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500 text-ivory shadow-xs">
+                      {product.dealTag}
+                    </span>
+                  )}
+                </div>
+
+                {/* Demo Data Label */}
+                <div className="absolute bottom-4 left-4">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white/90 backdrop-blur-xs text-espresso-700 border border-rose-100">
+                    AUTHENTIC CATALOG • INDIAN RETAILERS
+                  </span>
+                </div>
+              </div>
+
+              {/* Size & Variant Notice */}
+              <div className="bg-white p-3.5 rounded-2xl border border-rose-100 flex items-center justify-between text-xs text-espresso-600">
+                <span>Standard Package Size:</span>
+                <strong className="text-espresso-900 font-sans">{product.quantity}</strong>
+              </div>
+
+              <div className="text-[11px] text-sage-800 bg-sage-50 border border-sage-200/80 p-3 rounded-2xl flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-sage-600 shrink-0" />
+                <span>Exact size ({product.quantity}) and authentic formulation verified for comparison.</span>
+              </div>
+            </div>
+
+            {/* Right Column: Meta, Pricing, & Action CTAs */}
+            <div className="lg:col-span-7 space-y-6">
+              <div>
+                <div className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider text-rose-500 mb-1">
+                  <span>{product.brand}</span>
+                  <span>•</span>
+                  <span>{product.subcategory}</span>
+                </div>
+
+                <h1 className="font-editorial text-3xl sm:text-4xl font-bold text-espresso-950 leading-tight">
+                  {product.name}
+                </h1>
+
+                {/* Rating */}
+                {product.rating && (
+                  <div className="flex items-center space-x-2 mt-2">
+                    <div className="flex text-champagne-500">
+                      <Star className="w-4 h-4 fill-champagne-500" />
+                      <span className="text-xs font-bold text-espresso-800 ml-1.5">{product.rating}</span>
+                    </div>
+                    <span className="text-xs text-espresso-400">
+                      ({product.reviewCount?.toLocaleString('en-IN')} verified customer reviews)
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {product.dataSource ? (
+                <div className={`flex items-center space-x-2 text-xs px-3 py-1.5 rounded-xl border ${
+                  product.dataStatus === 'catalog_verified'
+                    ? 'text-emerald-800 bg-emerald-50/90 border-emerald-200/90'
+                    : 'text-amber-800 bg-amber-50/90 border-amber-200/90'
+                }`}>
+                  <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${
+                    product.dataStatus === 'catalog_verified' ? 'text-emerald-600' : 'text-amber-600'
+                  }`} />
+                  <span>
+                    <strong className="font-semibold">
+                      {product.dataStatus === 'catalog_verified'
+                        ? 'Verified Product Specification:'
+                        : 'Partially Verified Specifications:'}
+                    </strong>{' '}
+                    {product.dataSource}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-2 text-xs text-espresso-700 bg-espresso-50/80 border border-espresso-200 px-3 py-1.5 rounded-xl">
+                  <Info className="w-3.5 h-3.5 text-espresso-500 shrink-0" />
+                  <span>
+                    <strong className="font-semibold">Product Information Available:</strong> Commercial catalog listing. Packaging filing reference pending verification.
+                  </span>
+                </div>
+              )}
+
+              {/* Price Box */}
+              <div className="bg-white p-5 rounded-3xl border border-rose-200/80 shadow-soft-lift space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-espresso-400 block">
+                    Catalog Baseline Offer
+                  </span>
+                  <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                    Demo Price
+                  </span>
+                </div>
+
+                <div className="flex items-baseline space-x-3">
+                  <span className="text-3xl sm:text-4xl font-sans font-extrabold text-espresso-950">
+                    ₹{product.price.toLocaleString('en-IN')}
+                  </span>
+
+                  {product.originalPrice && product.originalPrice > product.price && (
+                    <span className="text-base font-sans text-espresso-400 line-through">
+                      ₹{product.originalPrice.toLocaleString('en-IN')}
+                    </span>
+                  )}
+
+                  {product.originalPrice && product.originalPrice > product.price && (
+                    <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
+                      Save ₹{(product.originalPrice - product.price).toLocaleString('en-IN')} (
+                      {Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)}% OFF)
+                    </span>
+                  )}
+                </div>
+
+                {/* Action Buttons: Wishlist, Price Alert, Share */}
+                <div className="pt-2 flex flex-wrap gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleWishlist(product.id)}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center space-x-2 transition-all border cursor-pointer ${
+                      wishlisted
+                        ? 'bg-rose-50 text-rose-600 border-rose-300'
+                        : 'bg-white hover:bg-rose-50/60 text-espresso-700 border-rose-200'
+                    }`}
+                  >
+                    <Heart className={`w-4 h-4 ${wishlisted ? 'fill-rose-500 text-rose-500' : ''}`} />
+                    <span>{wishlisted ? 'Saved in Wishlist' : 'Add to Wishlist'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsTrackerModalOpen(true)}
+                    className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center space-x-2 transition-all border cursor-pointer ${
+                      isTracked
+                        ? 'bg-sage-50 text-sage-800 border-sage-300'
+                        : 'bg-espresso-800 hover:bg-espresso-950 text-ivory border-espresso-900'
+                    }`}
+                  >
+                    <Bell className="w-4 h-4" />
+                    <span>
+                      {isTracked ? `Tracking (₹${trackingRecord?.targetPrice})` : 'Set Price-Drop Alert'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleShare}
+                    className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-ivory-100 text-espresso-600 border border-rose-200 text-xs font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer"
+                    title="Copy shareable link"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>{copiedUrl ? 'Copied URL!' : 'Share'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Description */}
+              <p className="text-sm text-espresso-700 leading-relaxed">
+                {product.description}
+              </p>
+
+              {/* Suitability Pills */}
+              <div className="flex flex-wrap gap-2 text-xs">
+                {product.skinType && (
+                  <div className="px-3 py-1.5 rounded-xl bg-sage-50 border border-sage-200 text-sage-800">
+                    <strong>Skin Suitability:</strong> {product.skinType}
+                  </div>
+                )}
+                {product.finish && (
+                  <div className="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800">
+                    <strong>Finish / Texture:</strong> {product.finish}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Beauty Usage Guide */}
+          <BeautyUsageGuide product={product} />
+        </section>
+
+        {/* SECTION 2: Price Comparison & Trends */}
+        <section id="section-pricing" className="scroll-mt-32 space-y-6 pt-4 border-t border-rose-100">
+          <div className="flex items-center space-x-2 text-rose-500 text-xs font-bold uppercase tracking-wider">
+            <DollarSign className="w-4 h-4" />
+            <span>Retailer Transparency & Market Trends</span>
+          </div>
+
+          {/* Automatic Multi-Retailer Live Price Comparison */}
+          <LiveRetailerPriceComparison
+            productId={numericProductId}
+            slug={product.slug || slugOrId || ''}
+            productName={product.name}
+            brand={product.brand}
+            targetVariant={product.quantity}
+            fallbackOffers={product.storeOffers}
+          />
+
+          {/* Phase 9: Algorithmic Deal Scoring & Landed Cost Breakdown */}
+          <DealScoreCard
+            productId={numericProductId}
+            retailerName={product.storeOffers?.[0]?.storeName || 'Nykaa'}
+          />
+
+          {/* Phase 9: Historical Price Analytics & Trends Chart */}
           <PriceHistoryChart
+            productId={numericProductId}
             priceHistory={product.priceHistory}
             currentPrice={product.price}
             originalPrice={product.originalPrice}
@@ -295,49 +428,36 @@ export const ProductDetailPage: React.FC = () => {
           />
         </section>
 
-        {/* Beauty Product Usage Guide & Ingredient Intelligence */}
-        <BeautyUsageGuide product={product} />
+        {/* SECTION 3: Ingredient Intelligence */}
+        <section id="section-ingredients" className="scroll-mt-32 pt-4 border-t border-rose-100">
+          <IngredientAnalysisSection
+            productId={numericProductId}
+            productName={product.name}
+            brand={product.brand}
+            category={product.category}
+            subcategory={product.subcategory}
+          />
+        </section>
 
-        {/* Cheapest Alternative Recommendation */}
-        {matchedDupe && (
-          <section className="pt-2">
-            <div className="rounded-3xl bg-gradient-to-r from-champagne-100/70 to-rose-100/70 border border-champagne-300 p-6 flex flex-col sm:flex-row items-center justify-between gap-5">
-              <div className="flex items-center space-x-3.5">
-                <Sparkles className="w-7 h-7 text-champagne-600 shrink-0" />
-                <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-espresso-800 block">
-                    Cheapest Alternative Available
-                  </span>
-                  <p className="text-xs text-espresso-800 mt-0.5">
-                    Save ₹{matchedDupe.priceDifference.toLocaleString('en-IN')} ({matchedDupe.percentageSaved}% savings) with {matchedDupe.similarityScore}% formula similarity.
-                  </p>
-                  <p className="text-[11px] text-espresso-600 italic mt-0.5">
-                    {matchedDupe.similarityExplanation}
-                  </p>
-                </div>
-              </div>
+        {/* SECTION 4: Cheaper Alternatives & Dupe Finder */}
+        <section id="section-alternatives" className="scroll-mt-32 pt-4 border-t border-rose-100">
+          <AlternativesSection
+            productId={numericProductId}
+            productName={product.name}
+            brand={product.brand}
+            price={product.price}
+            originalPrice={product.originalPrice}
+            image={product.image}
+            quantity={product.quantity}
+            category={product.category}
+            subcategory={product.subcategory}
+          />
+        </section>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const altId = product.id === matchedDupe.originalProductId
-                    ? matchedDupe.alternativeProductId
-                    : matchedDupe.originalProductId;
-                  const altProd = PRODUCTS_DATA.find((p) => p.id === altId);
-                  if (altProd) {
-                    navigate(`/product/${altProd.slug || altProd.id}`);
-                  }
-                }}
-                className="px-5 py-2.5 rounded-xl bg-espresso-800 hover:bg-espresso-950 text-ivory text-xs font-bold tracking-wide transition-colors shrink-0"
-              >
-                View Alternative ↗
-              </button>
-            </div>
-          </section>
-        )}
-
-        {/* Phase 4: Reviews Intelligence & Multi-Platform Comparison Hub */}
-        <ReviewIntelligenceHub product={product} />
+        {/* SECTION 5: Reviews Intelligence */}
+        <section id="section-reviews" className="scroll-mt-32 pt-4 border-t border-rose-100">
+          <ReviewIntelligenceHub product={product} />
+        </section>
       </div>
 
       {/* Target Price Tracking Modal */}
