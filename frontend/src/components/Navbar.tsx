@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Sparkles, Heart, Search, Menu, X, Bell, User as UserIcon, LogOut } from 'lucide-react';
+import { Sparkles, Heart, Search, Menu, X, Bell, User as UserIcon, LogOut, Target } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 
@@ -147,6 +147,43 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="text-sm tracking-wide font-medium text-espresso-600 hover:text-rose-600 transition-colors"
               >
                 Routines
+              </Link>
+
+              <Link
+                to="/ingredients"
+                className="text-sm tracking-wide font-medium text-espresso-600 hover:text-rose-600 transition-colors flex items-center space-x-1"
+              >
+                <span>Ingredients</span>
+              </Link>
+
+              <Link
+                to="/climate-advisor"
+                className="text-sm tracking-wide font-medium text-espresso-600 hover:text-rose-600 transition-colors flex items-center space-x-1 text-blue-600"
+              >
+                <span>Climate Care</span>
+              </Link>
+
+              <Link
+                to="/shade-matcher"
+                className="text-sm tracking-wide font-medium text-espresso-600 hover:text-rose-600 transition-colors flex items-center space-x-1 text-champagne-700"
+              >
+                <span>Shade Matcher</span>
+              </Link>
+
+              <Link
+                to="/beauty-assistant"
+                className="text-sm tracking-wide font-medium text-espresso-600 hover:text-rose-600 transition-colors flex items-center space-x-1"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-rose-500" />
+                <span>AI Assistant</span>
+              </Link>
+
+              <Link
+                to="/skin-concerns"
+                className="text-sm tracking-wide font-medium text-espresso-600 hover:text-rose-600 transition-colors flex items-center space-x-1 text-sage-600"
+              >
+                <Target className="w-3.5 h-3.5 text-sage-500" />
+                <span>Skin Concerns</span>
               </Link>
 
               <Link
@@ -327,6 +364,43 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="text-left font-medium text-espresso-800 hover:text-rose-600 py-1"
               >
                 Personalized Routines (AM/PM)
+              </Link>
+              <Link
+                to="/ingredients"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-left font-medium text-espresso-800 hover:text-rose-600 py-1 flex items-center space-x-2"
+              >
+                <span>🧪 Ingredient Safety & Clash Matrix</span>
+              </Link>
+              <Link
+                to="/climate-advisor"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-left font-medium text-espresso-800 hover:text-rose-600 py-1 flex items-center space-x-2 text-blue-600"
+              >
+                <span>🌦️ Indian Climate Skincare Advisor</span>
+              </Link>
+              <Link
+                to="/shade-matcher"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-left font-medium text-espresso-800 hover:text-rose-600 py-1 flex items-center space-x-2 text-champagne-700"
+              >
+                <span>🎨 Foundation Shade Matcher</span>
+              </Link>
+              <Link
+                to="/beauty-assistant"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-left font-medium text-espresso-800 hover:text-rose-600 py-1 flex items-center space-x-2"
+              >
+                <Sparkles className="w-4 h-4 text-rose-500" />
+                <span>AI Beauty Assistant</span>
+              </Link>
+              <Link
+                to="/skin-concerns"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-left font-medium text-espresso-800 hover:text-rose-600 py-1 flex items-center space-x-2"
+              >
+                <Target className="w-4 h-4 text-sage-600" />
+                <span>Skin Concern Matcher</span>
               </Link>
               <Link
                 to="/profile"

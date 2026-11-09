@@ -1,0 +1,28 @@
+# Render Blueprint Specification for PriceWise AI Cloud Staging (Phase 13)
+# Documentation: https://render.com/docs/blueprint-spec
+
+services:
+  # 1. FastAPI Backend API Bridge
+  - type: web
+    name: pricewise-backend-staging
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
+    plan: free # Can upgrade to starter ($7/mo) for zero cold starts
+    region: frankfurt # or singapore / oregon
+    healthCheckPath: /api/health/ready
+    envVars:
+      - key: ENVIRONMENT
+        value: staging
+      - key: DATABASE_URL
+        sync: false # Set securely to Neon pooled connection string in Render dashboard
+      - key: CORS_ORIGINS
+        value: "https://pricewise-staging.vercel.app,http://localhost:5173"
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GEMINI_API_KEY
+        sync: false # Set securely in Render dashboard
+      - key: SECRET_KEY
+        generateValue: true
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "120"

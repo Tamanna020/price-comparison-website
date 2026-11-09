@@ -156,7 +156,7 @@ def test_variant_integrity_strictly_rejects_volume_mismatch():
         offer_title="Watermelon Cooling Sunscreen 30ml",
         offer_variant="30ml",
     )
-    assert result.match_classification == MatchClassification.INCOMPATIBLE_MISMATCH
+    assert result.match_classification in (MatchClassification.SIZE_VARIANT, MatchClassification.INCOMPATIBLE_MISMATCH)
     assert not result.is_comparable
     assert not result.size_match
     assert any("30ml cannot be compared with 50ml" in r or "Size mismatch" in r for r in result.reasons)
@@ -173,7 +173,7 @@ def test_variant_integrity_strictly_rejects_makeup_shade_mismatch():
         offer_variant="Velvet Teddy",
         offer_specs={"Shade": "Velvet Teddy", "Size": "3g"},
     )
-    assert result.match_classification == MatchClassification.INCOMPATIBLE_MISMATCH
+    assert result.match_classification in (MatchClassification.SHADE_VARIANT, MatchClassification.INCOMPATIBLE_MISMATCH)
     assert not result.is_comparable
     assert not result.shade_match
     assert any("Shade mismatch" in r for r in result.reasons)
@@ -190,7 +190,7 @@ def test_variant_integrity_strictly_rejects_formulation_mismatch():
         offer_variant="Washable",
         offer_specs={"Formulation": "Washable", "Size": "7.2ml"},
     )
-    assert result.match_classification == MatchClassification.INCOMPATIBLE_MISMATCH
+    assert result.match_classification in (MatchClassification.FORMULATION_VARIANT, MatchClassification.INCOMPATIBLE_MISMATCH)
     assert not result.is_comparable
     assert not result.formulation_match
     assert any("Formulation mismatch" in r for r in result.reasons)

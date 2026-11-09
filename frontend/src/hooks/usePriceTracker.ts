@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { TrackedProduct, PriceAlertNotification } from '../types';
 import { PRODUCTS_DATA } from '../data/products';
+import { toNumericProductId } from '../utils/slug';
+import {
+  addTrackedProduct,
+  removeTrackedProduct,
+} from '../utils/api';
 
 const TRACKING_STORAGE_KEY = 'pricewise_beauty_tracked';
 const ALERTS_STORAGE_KEY = 'pricewise_beauty_alerts';
@@ -159,6 +164,12 @@ export function usePriceTracker() {
       });
     }
 
+    // Asynchronously sync to backend if numeric ID can be resolved
+    const numId = toNumericProductId(productId);
+    if (numId) {
+      addTrackedProduct(numId, Math.round(targetPrice), note).catch(() => {});
+    }
+
     return {
       success: true,
       message: `Started monitoring '${product.name}' at target ₹${targetPrice.toLocaleString('en-IN')}.`,
@@ -174,11 +185,19 @@ export function usePriceTracker() {
           : item
       )
     );
+    const numId = toNumericProductId(productId);
+    if (numId) {
+      addTrackedProduct(numId, Math.round(newTargetPrice)).catch(() => {});
+    }
     return true;
   }, []);
 
   const stopTracking = useCallback((productId: string) => {
     setTrackedProducts((prev) => prev.filter((item) => item.productId !== productId));
+    const numId = toNumericProductId(productId);
+    if (numId) {
+      removeTrackedProduct(numId).catch(() => {});
+    }
   }, []);
 
   const isTracking = useCallback(

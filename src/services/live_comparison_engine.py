@@ -93,6 +93,33 @@ class LiveComparisonResult:
     offers: list[LiveRetailerOfferItem]
     summary: LiveComparisonSummary
 
+    @property
+    def status(self) -> str:
+        """Aggregate comparison status from individual retailer results.
+
+        Returns:
+            "retrieved"       — at least one verified live offer with price
+            "unavailable"     — no offers could be retrieved
+            "restricted"      — all offers blocked by retailer access restrictions
+            "unsupported"     — all retailers unsupported for this product
+            "partial"         — mixed results (some retrieved, some not)
+        """
+        if not self.offers:
+            return "unavailable"
+
+        statuses = {o.status for o in self.offers}
+        if "retrieved" in statuses:
+            if len(statuses) == 1:
+                return "retrieved"
+            return "partial"
+        if statuses == {"restricted"}:
+            return "restricted"
+        if statuses == {"unsupported"}:
+            return "unsupported"
+        if statuses == {"unavailable"}:
+            return "unavailable"
+        return "partial"
+
 
 class LiveComparisonEngine:
     """

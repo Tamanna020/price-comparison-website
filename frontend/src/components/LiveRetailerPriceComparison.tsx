@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   RefreshCw,
   ExternalLink,
@@ -7,26 +8,30 @@ import {
   Truck,
   Tag,
   Clock,
-  Sparkles,
   Link as LinkIcon,
   Search,
   CheckCircle2,
-  Lock,
+  PlusCircle,
+  X,
 } from 'lucide-react';
 import {
   getAutoLiveComparison,
   checkManualUrlPrice,
+  getProductRetailerSources,
+  uploadEvidenceFile,
+  submitProductManualVerification,
   type LiveComparisonResult,
-  type LiveRetailerOffer,
   type ManualUrlCheckResult,
+  type ProductRetailerSource,
 } from '../utils/api';
 import type { RetailerOffer } from '../types';
+import { useAuth } from '../context/AuthContext';
 
 interface LiveRetailerPriceComparisonProps {
   productId?: number;
   slug: string;
-  productName: string;
-  brand: string;
+  productName?: string;
+  brand?: string;
   targetVariant: string;
   fallbackOffers: RetailerOffer[];
 }
@@ -36,10 +41,16 @@ const RETAILER_NAMES = ['Nykaa', 'Myntra', 'Purplle', 'Tira', 'Amazon India'];
 export const LiveRetailerPriceComparison: React.FC<LiveRetailerPriceComparisonProps> = ({
   productId,
   slug,
+  productName: _productName,
+  brand: _brand,
   targetVariant,
   fallbackOffers,
 }) => {
+  const { user } = useAuth();
+  const isAdmin = user && (user.id === 1 || user.email.toLowerCase().endsWith('@pricewise.ai') || (user as any).is_admin);
+
   const [comparison, setComparison] = useState<LiveComparisonResult | null>(null);
+  const [sources, setSources] = useState<ProductRetailerSource[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [mountedAt] = useState<string>(() => new Date().toISOString());
@@ -50,6 +61,19 @@ export const LiveRetailerPriceComparison: React.FC<LiveRetailerPriceComparisonPr
   const [isCheckingManual, setIsCheckingManual] = useState(false);
   const [manualResult, setManualResult] = useState<ManualUrlCheckResult | null>(null);
   const [manualError, setManualError] = useState<string | null>(null);
+
+  // User Verification Submission Modal
+  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
+  const [verifyRetailer, setVerifyRetailer] = useState('Nykaa');
+  const [verifyUrl, setVerifyUrl] = useState('');
+  const [verifyPrice, setVerifyPrice] = useState('');
+  const [verifyMrp, setVerifyMrp] = useState('');
+  const [verifySize, setVerifySize] = useState(targetVariant || '');
+  const [verifyNotes, setVerifyNotes] = useState('');
+  const [verifyFile, setVerifyFile] = useState<File | null>(null);
+  const [isSubmittingVerify, setIsSubmittingVerify] = useState(false);
+  const [verifySuccessMsg, setVerifySuccessMsg] = useState<string | null>(null);
+  const [verifyErrorMsg, setVerifyErrorMsg] = useState<string | null>(null);
 
   // Deduplication ref to avoid duplicate calls on re-renders
   const lastFetchedSlugRef = useRef<string | null>(null);
@@ -63,9 +87,16 @@ export const LiveRetailerPriceComparison: React.FC<LiveRetailerPriceComparisonPr
       }
 
       try {
-        const res = await getAutoLiveComparison(productId, slug, force);
-        if (res) {
-          setComparison(res);
+        const [liveRes, sourcesRes] = await Promise.all([
+          getAutoLiveComparison(productId, slug, force),
+          productId ? getProductRetailerSources(productId) : Promise.resolve([]),
+        ]);
+
+        if (liveRes) {
+          setComparison(liveRes);
+        }
+        if (sourcesRes && sourcesRes.length > 0) {
+          setSources(sourcesRes);
         }
       } catch {
         // Handled internally in api.ts with fallback
@@ -77,7 +108,6 @@ export const LiveRetailerPriceComparison: React.FC<LiveRetailerPriceComparisonPr
     [productId, slug]
   );
 
-  // AUTOMATIC BACKGROUND TRIGGER ON MOUNT (NO MANUAL BUTTON)
   useEffect(() => {
     if (lastFetchedSlugRef.current !== slug) {
       lastFetchedSlugRef.current = slug;
@@ -98,7 +128,7 @@ export const LiveRetailerPriceComparison: React.FC<LiveRetailerPriceComparisonPr
       if (res) {
         setManualResult(res);
       } else {
-        setManualError('Unable to connect or extract price from this URL. Ensure it is a valid HTTPS retailer product page.');
+        setManualError('Unable to extract price from this URL. Ensure it is a valid HTTPS retailer product page.');
       }
     } catch (err: unknown) {
       setManualError(err instanceof Error ? err.message : 'URL check failed');
@@ -107,85 +137,237 @@ export const LiveRetailerPriceComparison: React.FC<LiveRetailerPriceComparisonPr
     }
   };
 
-  // If live results are ready, use them; otherwise, prepare progressive or placeholder cards
-  const displayOffers: LiveRetailerOffer[] = useMemo(() => {
-    if (comparison) {
-      return comparison.offers;
+  const handleVerifySubmission = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!productId || !verifyUrl.trim() || !verifyPrice) {
+      setVerifyErrorMsg('Please fill in required fields (Retailer, URL, Observed Price).');
+      return;
     }
+
+    const priceNum = parseFloat(verifyPrice);
+    if (isNaN(priceNum) || priceNum <= 0) {
+      setVerifyErrorMsg('Please enter a valid positive price.');
+      return;
+    }
+
+    setIsSubmittingVerify(true);
+    setVerifyErrorMsg(null);
+    setVerifySuccessMsg(null);
+
+    try {
+      let uploadedEvidenceUrl: string | undefined = undefined;
+      if (verifyFile) {
+        const uploadRes = await uploadEvidenceFile(verifyFile);
+        if (uploadRes.success) {
+          uploadedEvidenceUrl = uploadRes.evidenceUrl;
+        } else {
+          setVerifyErrorMsg(`Evidence upload failed: ${uploadRes.error}`);
+          setIsSubmittingVerify(false);
+          return;
+        }
+      }
+
+      const submitRes = await submitProductManualVerification({
+        product_id: productId,
+        retailer: verifyRetailer,
+        product_url: verifyUrl.trim(),
+        user_submitted_price: priceNum,
+        size_volume: verifySize.trim() || undefined,
+        notes: verifyNotes.trim() || undefined,
+        evidence_url: uploadedEvidenceUrl,
+      });
+
+      if (submitRes.success) {
+        setVerifySuccessMsg('Price verification submitted successfully! It is now pending admin review in the evidence queue.');
+        setVerifyUrl('');
+        setVerifyPrice('');
+        setVerifyMrp('');
+        setVerifyFile(null);
+        setTimeout(() => {
+          setIsVerifyModalOpen(false);
+          setVerifySuccessMsg(null);
+        }, 2500);
+      } else {
+        setVerifyErrorMsg(submitRes.error || 'Submission failed.');
+      }
+    } catch (err: unknown) {
+      setVerifyErrorMsg(err instanceof Error ? err.message : 'Error submitting verification');
+    } finally {
+      setIsSubmittingVerify(false);
+    }
+  };
+
+  // Helper to calculate unit price (₹/ml or ₹/g)
+  const calculateUnitPrice = (price?: number | null, variantText?: string | null): string | null => {
+    if (!price || price <= 0 || !variantText) return null;
+    const match = variantText.match(/(\d+(?:\.\d+)?)\s*(ml|g|gm)/i);
+    if (!match) return null;
+    const qty = parseFloat(match[1]);
+    const unit = match[2].toLowerCase() === 'gm' ? 'g' : match[2].toLowerCase();
+    if (qty <= 0) return null;
+    const perUnit = (price / qty).toFixed(2);
+    return `₹${perUnit}/${unit}`;
+  };
+
+  // Prepare display offers, merging comparison and verified sources
+  const displayOffers = useMemo(() => {
     return RETAILER_NAMES.map((name) => {
-      const local = fallbackOffers.find((f) => f.storeName.toLowerCase().includes(name.toLowerCase().split(' ')[0]));
+      const cleanKey = name.toLowerCase().split(' ')[0];
+      const sourceMatch = sources.find((s) => s.retailer_name.toLowerCase().includes(cleanKey));
+      const compOffer = comparison?.offers.find((o) => o.retailerName.toLowerCase().includes(cleanKey));
+      const local = fallbackOffers.find((f) => f.storeName.toLowerCase().includes(cleanKey));
+
+      const isRestrictedPolicy = sourceMatch?.requires_manual_verification || compOffer?.status === 'restricted';
+      const verificationStatus = sourceMatch?.verification_status || (compOffer?.sourceType === 'verified_live' ? 'LIVE_VERIFIED' : 'DEMO');
+
+      const listedPrice = sourceMatch?.current_price ?? compOffer?.listedPrice ?? local?.price;
+      const mrp = sourceMatch?.original_price ?? compOffer?.mrp ?? local?.originalPrice;
+      const discountPct = mrp && listedPrice && mrp > listedPrice ? Math.round(((mrp - listedPrice) / mrp) * 100) : 0;
+      const purchaseUrl = sourceMatch?.product_url ?? compOffer?.purchaseUrl ?? local?.purchaseUrl ?? `https://www.${cleanKey}.com`;
+
       return {
         retailerName: name,
         storeId: name.toLowerCase().replace(' ', '-'),
-        status: isLoading ? 'retrieved' : 'unavailable',
-        listedPrice: local?.price,
-        mrp: local?.originalPrice,
-        discountPct: local?.originalPrice && local?.originalPrice > local?.price ? Math.round(((local.originalPrice - local.price) / local.originalPrice) * 100) : 0,
-        shippingFee: local?.shippingFee,
-        isShippingDisclosed: local?.isShippingDisclosed ?? true,
-        couponCode: local?.couponCode,
-        couponDiscount: local?.couponDiscount || 0,
-        totalCost: local?.totalCost,
-        stockStatus: local?.stockStatus || (local?.inStock ? 'In Stock' : 'Out of Stock'),
-        inStock: local?.inStock ?? true,
-        purchaseUrl: local?.purchaseUrl || `https://www.${name.toLowerCase().replace(' ', '')}.com`,
-        matchClassification: 'verified_match',
-        isLowestListed: !!local?.isLowestPrice,
-        isLowestTotal: !!local?.isLowestPrice,
-        sourceType: 'demo',
-        retrievedAt: mountedAt,
-        validationNotes: isLoading ? 'Checking live feed...' : undefined,
+        status: isRestrictedPolicy ? 'restricted' : (listedPrice ? 'retrieved' : 'unavailable'),
+        listedPrice,
+        mrp,
+        discountPct,
+        shippingFee: compOffer?.shippingFee ?? local?.shippingFee,
+        isShippingDisclosed: compOffer?.isShippingDisclosed ?? local?.isShippingDisclosed ?? true,
+        couponCode: compOffer?.couponCode ?? local?.couponCode,
+        couponDiscount: compOffer?.couponDiscount ?? local?.couponDiscount ?? 0,
+        totalCost: compOffer?.totalCost ?? local?.totalCost ?? listedPrice,
+        stockStatus: compOffer?.stockStatus ?? local?.stockStatus ?? 'In Stock',
+        inStock: compOffer?.inStock ?? local?.inStock ?? true,
+        purchaseUrl,
+        matchClassification: compOffer?.matchClassification ?? 'EXACT_MATCH',
+        isLowestListed: compOffer?.isLowestListed ?? local?.isLowestPrice ?? false,
+        isLowestTotal: compOffer?.isLowestTotal ?? local?.isLowestPrice ?? false,
+        sourceType: compOffer?.sourceType ?? (verificationStatus === 'LIVE_VERIFIED' ? 'verified_live' : 'demo'),
+        verificationStatus,
+        lastVerifiedAt: sourceMatch?.last_verified_at,
+        retrievedAt: sourceMatch?.last_checked_at ?? compOffer?.retrievedAt ?? mountedAt,
+        unitPrice: calculateUnitPrice(listedPrice, targetVariant),
       };
     });
-  }, [comparison, fallbackOffers, isLoading, mountedAt]);
+  }, [comparison, sources, fallbackOffers, mountedAt, targetVariant]);
 
-  // Sort offers: retrieved first, then by total cost or listed price
-  const sortedOffers = [...displayOffers].sort((a, b) => {
-    if (a.status === 'retrieved' && b.status !== 'retrieved') return -1;
-    if (a.status !== 'retrieved' && b.status === 'retrieved') return 1;
+  // Sort offers: verified or lowest total first
+  const sortedOffers = useMemo(() => {
+    return [...displayOffers].sort((a, b) => {
+      if (a.verificationStatus === 'LIVE_VERIFIED' && b.verificationStatus !== 'LIVE_VERIFIED') return -1;
+      if (a.verificationStatus !== 'LIVE_VERIFIED' && b.verificationStatus === 'LIVE_VERIFIED') return 1;
+      const aCost = a.totalCost ?? a.listedPrice ?? Infinity;
+      const bCost = b.totalCost ?? b.listedPrice ?? Infinity;
+      return aCost - bCost;
+    });
+  }, [displayOffers]);
 
-    const aTotal = a.totalCost ?? a.listedPrice ?? Infinity;
-    const bTotal = b.totalCost ?? b.listedPrice ?? Infinity;
-    return aTotal - bTotal;
-  });
+  // Render Status Badge with strict truth-in-advertising colors
+  const renderVerificationBadge = (status: string) => {
+    switch (status) {
+      case 'LIVE_VERIFIED':
+        return (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center space-x-1">
+            <ShieldCheck className="w-3 h-3 text-emerald-600" />
+            <span>LIVE VERIFIED</span>
+          </span>
+        );
+      case 'MANUAL_VERIFIED':
+        return (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-300 flex items-center space-x-1">
+            <CheckCircle2 className="w-3 h-3 text-sky-600" />
+            <span>MANUALLY VERIFIED</span>
+          </span>
+        );
+      case 'CACHED':
+        return (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 flex items-center space-x-1">
+            <Clock className="w-3 h-3 text-amber-600" />
+            <span>CACHED PRICE</span>
+          </span>
+        );
+      case 'HISTORICAL':
+        return (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-300 flex items-center space-x-1">
+            <span>HISTORICAL PRICE</span>
+          </span>
+        );
+      case 'POSSIBLE_MATCH':
+        return (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-300 flex items-center space-x-1">
+            <span>POSSIBLE MATCH</span>
+          </span>
+        );
+      case 'UNAVAILABLE':
+        return (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300 flex items-center space-x-1">
+            <span>UNAVAILABLE</span>
+          </span>
+        );
+      case 'DEMO':
+      default:
+        return (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-900 border border-amber-200 flex items-center space-x-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+            <span>DEMO PRICE (Simulated)</span>
+          </span>
+        );
+    }
+  };
 
   return (
     <section className="space-y-4 pt-6 border-t border-rose-200" id="live-price-comparison-section">
-      {/* Header with Title, Auto-Status & Manual Refresh Icon */}
+      {/* Header with Title, Actions & Admin Queue Link */}
       <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3">
         <div>
           <div className="flex items-center space-x-2.5">
             <h2 className="font-editorial text-2xl font-bold text-espresso-900">
-              Live Retailer Price Comparison
+              Retailer Price Comparison & Verification
             </h2>
             {isLoading && (
               <span className="flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200 animate-pulse">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
-                <span>Checking Feeds...</span>
-              </span>
-            )}
-            {!isLoading && comparison?.isCached && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ivory-100 text-espresso-600 border border-rose-100">
-                Cached ({Math.round(comparison.freshnessSeconds / 60)}m ago)
+                <span>Checking Retailer Feeds...</span>
               </span>
             )}
           </div>
           <p className="text-xs text-espresso-500 mt-1">
-            Real-time automated price checking across India's top beauty destinations. Variant locked: <strong>{targetVariant || 'Standard'}</strong>.
+            Transparent price intelligence across India's top beauty destinations. Variant locked: <strong>{targetVariant || 'Standard'}</strong>.
           </p>
         </div>
 
-        {/* Refresh Action (Subtle icon to re-sync without full page reload) */}
-        <div className="flex items-center space-x-2">
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          {isAdmin && (
+            <Link
+              to="/admin/verifications"
+              className="px-3 py-1.5 rounded-xl border border-rose-300 bg-rose-50/80 hover:bg-rose-100 text-rose-800 text-xs font-bold flex items-center space-x-1.5 transition-all shadow-2xs"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-rose-600" />
+              <span>Admin Verification Queue</span>
+            </Link>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setIsVerifyModalOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-espresso-900 hover:bg-espresso-950 text-ivory text-xs font-bold flex items-center space-x-1.5 transition-all shadow-2xs"
+            title="Submit latest observed price and screenshot proof"
+          >
+            <PlusCircle className="w-3.5 h-3.5 text-rose-300" />
+            <span>Verify Retailer Price</span>
+          </button>
+
           <button
             type="button"
             onClick={() => fetchLiveComparison(true)}
             disabled={isLoading || isRefreshing}
             className="px-3 py-1.5 rounded-xl border border-rose-200 bg-white hover:bg-rose-50/70 text-espresso-700 text-xs font-semibold flex items-center space-x-1.5 transition-all shadow-2xs disabled:opacity-50"
-            title="Refresh live prices across all retailers"
+            title="Refresh prices"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-espresso-600 ${isRefreshing ? 'animate-spin text-rose-600' : ''}`} />
-            <span>{isRefreshing ? 'Checking...' : 'Refresh'}</span>
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
           </button>
 
           <button
@@ -199,23 +381,6 @@ export const LiveRetailerPriceComparison: React.FC<LiveRetailerPriceComparisonPr
           </button>
         </div>
       </div>
-
-      {/* Highlights Banner if Lowest Available */}
-      {comparison?.summary?.lowestTotalCost && (
-        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-sage-50 to-rose-50 border border-sage-200 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="flex items-center space-x-2 text-espresso-800">
-            <Sparkles className="w-4 h-4 text-rose-500 shrink-0" />
-            <span>
-              Best Verified Deal on <strong>{comparison.summary.lowestTotalRetailer}</strong>: Landed Total of <strong>₹{comparison.summary.lowestTotalCost.toLocaleString('en-IN')}</strong>.
-            </span>
-          </div>
-          {comparison.summary.cheapestSavingsAmount > 0 && (
-            <span className="font-bold text-rose-700 bg-white/80 px-2.5 py-1 rounded-full border border-rose-200 text-[11px]">
-              Saves up to ₹{comparison.summary.cheapestSavingsAmount.toLocaleString('en-IN')} ({comparison.summary.cheapestSavingsPercent}%) vs other retailers
-            </span>
-          )}
-        </div>
-      )}
 
       {/* Manual Product URL Input Panel (Optional Expandable) */}
       {isManualUrlOpen && (
@@ -288,9 +453,7 @@ export const LiveRetailerPriceComparison: React.FC<LiveRetailerPriceComparisonPr
       {/* Retailer Comparison Cards */}
       <div className="rounded-3xl border border-rose-200 overflow-hidden bg-white shadow-soft-lift divide-y divide-rose-100">
         {sortedOffers.map((offer) => {
-          const isRetrieved = offer.status === 'retrieved' && offer.listedPrice && offer.listedPrice > 0;
           const isRestricted = offer.status === 'restricted';
-          const isUnsupported = offer.status === 'unsupported';
           const hasKnownShipping = offer.isShippingDisclosed && offer.shippingFee !== null && offer.shippingFee !== undefined;
 
           return (
@@ -300,7 +463,7 @@ export const LiveRetailerPriceComparison: React.FC<LiveRetailerPriceComparisonPr
                 offer.isLowestTotal ? 'bg-rose-50/30' : 'bg-white'
               }`}
             >
-              {/* Retailer Identity & Status Information */}
+              {/* Retailer Identity & Badges */}
               <div className="flex items-start sm:items-center space-x-3.5">
                 <div className="w-10 h-10 rounded-full bg-ivory border border-rose-200 flex items-center justify-center font-bold text-sm text-espresso-900 shrink-0">
                   {offer.retailerName[0]}
@@ -312,145 +475,253 @@ export const LiveRetailerPriceComparison: React.FC<LiveRetailerPriceComparisonPr
                       {offer.retailerName}
                     </span>
 
-                    {/* Lowest Total Cost Badge */}
-                    {offer.isLowestTotal && isRetrieved && (
+                    {/* Status Badge */}
+                    {renderVerificationBadge(offer.verificationStatus)}
+
+                    {/* Unit Price Normalization */}
+                    {offer.unitPrice && (
+                      <span className="text-[11px] font-semibold text-espresso-700 bg-ivory-100 px-2 py-0.5 rounded-md border border-rose-200">
+                        {offer.unitPrice}
+                      </span>
+                    )}
+
+                    {/* Lowest Price Tag */}
+                    {offer.isLowestTotal && (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sage-600 text-ivory flex items-center space-x-1">
                         <CheckCircle2 className="w-3 h-3" />
-                        <span>Lowest Total Cost</span>
-                      </span>
-                    )}
-
-                    {/* Lowest Listed Price Badge */}
-                    {offer.isLowestListed && !offer.isLowestTotal && isRetrieved && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-600 text-ivory">
-                        Lowest Listed Price
-                      </span>
-                    )}
-
-                    {/* Source & Freshness Label */}
-                    {isRetrieved && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-ivory-100 text-espresso-700 border border-rose-100 flex items-center space-x-1">
-                        <ShieldCheck className="w-3 h-3 text-sage-600" />
-                        <span>{offer.sourceType === 'verified_live' ? 'Verified Live' : 'Feed Active'}</span>
-                      </span>
-                    )}
-
-                    {/* Restriction pill */}
-                    {isRestricted && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 flex items-center space-x-1">
-                        <Lock className="w-3 h-3" />
-                        <span>Bot Protection (Restricted)</span>
-                      </span>
-                    )}
-
-                    {/* Unsupported pill */}
-                    {isUnsupported && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-700 border border-gray-200">
-                        Unsupported
+                        <span>Lowest Deal</span>
                       </span>
                     )}
 
                     {/* Stock Status */}
-                    {isRetrieved && (
-                      <span className="text-[10px] font-semibold text-espresso-600 bg-ivory-100 px-1.5 py-0.5 rounded border border-rose-100">
-                        {offer.stockStatus}
-                      </span>
-                    )}
+                    <span className="text-[10px] font-semibold text-espresso-600 bg-ivory-100 px-1.5 py-0.5 rounded border border-rose-100">
+                      {offer.stockStatus}
+                    </span>
                   </div>
 
-                  {/* Delivery & Timestamp Meta */}
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-espresso-500 mt-1">
-                    {isRetrieved && (
+                  {/* Restricted Retailer Explanatory Notice */}
+                  {isRestricted ? (
+                    <p className="text-xs text-amber-800 bg-amber-50/70 px-2.5 py-1 rounded-lg border border-amber-200 mt-1.5 max-w-xl">
+                      Automatic price checking is currently unavailable for this retailer. Visit the retailer website to check its latest price.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-espresso-500 mt-1">
                       <span className="flex items-center space-x-1">
                         <Truck className="w-3.5 h-3.5 text-espresso-400" />
                         <span>
-                          {hasKnownShipping ? (offer.shippingFee === 0 ? 'Free Shipping' : `+ ₹${offer.shippingFee} Shipping`) : 'Shipping Not Disclosed'}
+                          {hasKnownShipping ? (offer.shippingFee === 0 ? 'Free Shipping' : `+ ₹${offer.shippingFee} Shipping`) : 'Shipping Disclosed at Checkout'}
                         </span>
                       </span>
-                    )}
 
-                    {offer.retrievedAt && (
-                      <span className="flex items-center space-x-1 text-espresso-400 text-[11px]">
-                        <Clock className="w-3 h-3" />
-                        <span>Checked {new Date(offer.retrievedAt).toLocaleDateString('en-GB')}</span>
-                      </span>
-                    )}
+                      {offer.lastVerifiedAt ? (
+                        <span className="flex items-center space-x-1 text-sky-800 text-[11px]">
+                          <CheckCircle2 className="w-3 h-3 text-sky-600" />
+                          <span>Verified {new Date(offer.lastVerifiedAt).toLocaleDateString('en-GB')}</span>
+                        </span>
+                      ) : offer.retrievedAt ? (
+                        <span className="flex items-center space-x-1 text-espresso-400 text-[11px]">
+                          <Clock className="w-3 h-3" />
+                          <span>Checked {new Date(offer.retrievedAt).toLocaleDateString('en-GB')}</span>
+                        </span>
+                      ) : null}
 
-                    {offer.couponCode && (
-                      <span className="flex items-center space-x-1 text-[11px] text-rose-600 font-medium">
-                        <Tag className="w-3 h-3" />
-                        <span>Code {offer.couponCode} (-₹{offer.couponDiscount})</span>
-                      </span>
-                    )}
-
-                    {offer.validationNotes && !isRetrieved && (
-                      <span className="text-[11px] text-espresso-400 italic">
-                        {offer.validationNotes}
-                      </span>
-                    )}
-                  </div>
+                      {offer.couponCode && (
+                        <span className="flex items-center space-x-1 text-[11px] text-rose-600 font-medium">
+                          <Tag className="w-3 h-3" />
+                          <span>Code {offer.couponCode} (-₹{offer.couponDiscount})</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Price Display & Action Button */}
               <div className="flex items-center justify-between md:justify-end space-x-6 pt-2 md:pt-0 border-t md:border-t-0 border-rose-100">
-                {isRetrieved ? (
+                {offer.listedPrice && offer.listedPrice > 0 ? (
                   <div className="text-left md:text-right">
                     <span className="text-xs text-espresso-400 block font-normal">
-                      Base: ₹{offer.listedPrice?.toLocaleString('en-IN')}
-                      {offer.mrp && offer.mrp > (offer.listedPrice || 0) && (
+                      Base: ₹{offer.listedPrice.toLocaleString('en-IN')}
+                      {offer.mrp && offer.mrp > offer.listedPrice && (
                         <span className="line-through ml-1.5 text-espresso-300">
                           ₹{offer.mrp.toLocaleString('en-IN')}
                         </span>
                       )}
                     </span>
 
-                    <span className="text-[11px] text-espresso-500 block">
-                      {hasKnownShipping ? (
-                        offer.shippingFee === 0 ? 'Free Shipping Included' : `+ ₹${offer.shippingFee} Standard Shipping`
-                      ) : (
-                        <span className="text-amber-700 italic font-medium">Shipping Disclosed At Checkout</span>
-                      )}
-                    </span>
-
                     <div className="mt-0.5">
                       <span className="text-base sm:text-lg font-extrabold font-sans text-espresso-950">
-                        {offer.totalCost !== null && offer.totalCost !== undefined
-                          ? `₹${offer.totalCost.toLocaleString('en-IN')} Total`
-                          : `₹${offer.listedPrice?.toLocaleString('en-IN')} (Excl. Shipping)`}
+                        ₹{(offer.totalCost ?? offer.listedPrice).toLocaleString('en-IN')}
                       </span>
                     </div>
                   </div>
                 ) : (
                   <div className="text-left md:text-right">
-                    <span className="text-xs text-espresso-400 block italic">
-                      {isLoading ? 'Checking feed...' : isRestricted ? 'Restricted access' : 'Currently Unavailable'}
-                    </span>
-                    <span className="text-[11px] text-espresso-400 block">
-                      No live quote
-                    </span>
+                    <span className="text-xs text-espresso-400 block italic">Check Retailer</span>
                   </div>
                 )}
 
-                {/* Purchase Link Button */}
+                {/* Direct Retailer Link */}
                 <a
-                  href={offer.purchaseUrl || '#'}
+                  href={offer.purchaseUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`px-4 py-2.5 rounded-xl text-xs font-bold tracking-wide transition-all shadow-xs flex items-center space-x-1 shrink-0 ${
-                    isRetrieved
-                      ? 'bg-espresso-800 hover:bg-espresso-950 text-ivory'
-                      : 'bg-ivory-100 text-espresso-400 border border-rose-200 cursor-not-allowed pointer-events-none'
-                  }`}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold tracking-wide transition-all shadow-xs flex items-center space-x-1.5 shrink-0 bg-espresso-900 hover:bg-espresso-950 text-ivory"
                 >
-                  <span>{isRetrieved ? 'View Offer' : 'Unavailable'}</span>
-                  {isRetrieved && <ExternalLink className="w-3 h-3 ml-1" />}
+                  <span>Visit {offer.retailerName}</span>
+                  <ExternalLink className="w-3 h-3 ml-0.5" />
                 </a>
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* User Price Verification Modal */}
+      {isVerifyModalOpen && (
+        <div className="fixed inset-0 z-50 bg-espresso-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 border border-rose-200 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-rose-100 pb-3">
+              <div className="flex items-center space-x-2">
+                <ShieldCheck className="w-5 h-5 text-rose-500" />
+                <h3 className="font-editorial text-lg font-bold text-espresso-950">
+                  Submit Retailer Price for Verification
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsVerifyModalOpen(false)}
+                className="text-espresso-400 hover:text-espresso-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-espresso-600">
+              Found a different or updated price on an official retailer website? Submit it with proof (e.g. screenshot or invoice) and our admins will verify it for the community.
+            </p>
+
+            {verifySuccessMsg && (
+              <div className="p-3 rounded-2xl bg-sage-50 border border-sage-200 text-sage-800 text-xs flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-sage-600" />
+                <span>{verifySuccessMsg}</span>
+              </div>
+            )}
+
+            {verifyErrorMsg && (
+              <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{verifyErrorMsg}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleVerifySubmission} className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-espresso-800 block mb-1">Retailer:</label>
+                <select
+                  value={verifyRetailer}
+                  onChange={(e) => setVerifyRetailer(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-rose-200 bg-white text-espresso-900"
+                >
+                  {RETAILER_NAMES.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="font-bold text-espresso-800 block mb-1">Retailer Product URL *:</label>
+                <input
+                  type="url"
+                  required
+                  value={verifyUrl}
+                  onChange={(e) => setVerifyUrl(e.target.value)}
+                  placeholder="https://www.nykaa.com/... or https://www.tirabeauty.com/product/..."
+                  className="w-full px-3 py-2 rounded-xl border border-rose-200 focus:outline-hidden focus:ring-2 focus:ring-rose-300"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-espresso-800 block mb-1">Observed Selling Price (₹) *:</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={verifyPrice}
+                    onChange={(e) => setVerifyPrice(e.target.value)}
+                    placeholder="e.g. 549"
+                    className="w-full px-3 py-2 rounded-xl border border-rose-200 focus:outline-hidden focus:ring-2 focus:ring-rose-300"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-espresso-800 block mb-1">MRP / List Price (₹):</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={verifyMrp}
+                    onChange={(e) => setVerifyMrp(e.target.value)}
+                    placeholder="e.g. 599"
+                    className="w-full px-3 py-2 rounded-xl border border-rose-200 focus:outline-hidden focus:ring-2 focus:ring-rose-300"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-espresso-800 block mb-1">Product Size / Volume / Shade:</label>
+                <input
+                  type="text"
+                  value={verifySize}
+                  onChange={(e) => setVerifySize(e.target.value)}
+                  placeholder="e.g. 30ml, 50g, Ruby Woo"
+                  className="w-full px-3 py-2 rounded-xl border border-rose-200 focus:outline-hidden focus:ring-2 focus:ring-rose-300"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-espresso-800 block mb-1">Screenshot Proof (Optional, max 5MB):</label>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(e) => setVerifyFile(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-espresso-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-rose-50 file:text-rose-700 hover:file:bg-rose-100"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-espresso-800 block mb-1">Additional Notes / Promo Details:</label>
+                <textarea
+                  rows={2}
+                  value={verifyNotes}
+                  onChange={(e) => setVerifyNotes(e.target.value)}
+                  placeholder="e.g. Extra 10% coupon code applied during checkout"
+                  className="w-full px-3 py-2 rounded-xl border border-rose-200 focus:outline-hidden focus:ring-2 focus:ring-rose-300"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-3 border-t border-rose-100">
+                <button
+                  type="button"
+                  onClick={() => setIsVerifyModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-rose-200 text-espresso-700 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingVerify}
+                  className="px-5 py-2 rounded-xl bg-espresso-900 hover:bg-espresso-950 text-ivory text-xs font-bold disabled:opacity-50"
+                >
+                  {isSubmittingVerify ? 'Submitting...' : 'Submit Verification'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </section>
   );
 };

@@ -46,3 +46,16 @@ frontend/node_modules/
 .DS_Store
 Thumbs.db
 
+
+# Backups and Evidence Uploads
+data/backups/
+data/evidence_uploads/
+screenshots/
+.env.txt
+nul
+data/phase12_2_audit_summary.json
+data/performance_audit_metrics.json
+playwright_audit_results.json
+retailer_audit_results.json
+.neon
+node_modules/
