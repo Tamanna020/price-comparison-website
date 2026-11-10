@@ -113,6 +113,11 @@ class Product:
     specs: dict[str, Any] = field(default_factory=dict)
     image_url: str = ""
     created_at: Optional[str] = None
+    is_active: bool = True
+    image_source_url: Optional[str] = None
+    image_source_name: Optional[str] = None
+    image_status: str = "placeholder"
+    image_last_checked: Optional[str] = None
     offers: list[Offer] = field(default_factory=list)
 
     @property

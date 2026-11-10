@@ -10,10 +10,20 @@ from src.database.connection import get_connection
 from src.database.models import PricePoint
 
 
-def parse_timestamp(ts_str: str) -> Optional[datetime]:
-    """Parse various datetime string formats into UTC-aware datetime."""
+def parse_timestamp(ts_str) -> Optional[datetime]:
+    """Parse various datetime string formats or native datetime objects into UTC-aware datetime.
+    
+    PostgreSQL (psycopg) returns native datetime.datetime objects for TIMESTAMP columns.
+    SQLite returns strings. This function handles both types safely.
+    """
     if not ts_str:
         return None
+    # Handle native datetime objects from PostgreSQL psycopg driver
+    if isinstance(ts_str, datetime):
+        if ts_str.tzinfo is None:
+            return ts_str.replace(tzinfo=timezone.utc)
+        return ts_str.astimezone(timezone.utc)
+    # Handle string timestamps from SQLite
     clean_ts = ts_str.strip()
     try:
         dt = datetime.fromisoformat(clean_ts)

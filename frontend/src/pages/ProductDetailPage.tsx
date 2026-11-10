@@ -25,6 +25,7 @@ import { LiveRetailerPriceComparison } from '../components/LiveRetailerPriceComp
 import { IngredientAnalysisSection } from '../components/IngredientAnalysisSection';
 import { AlternativesSection } from '../components/AlternativesSection';
 import { BeautyUsageGuide } from '../components/BeautyUsageGuide';
+import { ProductImage } from '../components/ProductImage';
 import { useWishlist } from '../hooks/useWishlist';
 import { usePriceTracker } from '../hooks/usePriceTracker';
 
@@ -205,14 +206,19 @@ export const ProductDetailPage: React.FC = () => {
             {/* Left Column: Image & Size */}
             <div className="lg:col-span-5 space-y-4">
               <div className="aspect-square w-full rounded-3xl overflow-hidden bg-white border border-rose-200/90 shadow-luxury-card relative">
-                <img
+                <ProductImage
                   src={product.image}
                   alt={product.name}
-                  className="w-full h-full object-cover object-center"
+                  brand={product.brand}
+                  category={product.category}
+                  status={product.imageStatus || 'placeholder'}
+                  showBadge={true}
+                  priority={true}
+                  className="w-full h-full"
                 />
 
                 {/* Floating Badges */}
-                <div className="absolute top-4 left-4 flex flex-col gap-1.5">
+                <div className="absolute top-4 left-4 flex flex-col gap-1.5 pointer-events-none">
                   <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-espresso-900 text-champagne-300 shadow-xs">
                     {product.brandTier}
                   </span>
@@ -221,13 +227,6 @@ export const ProductDetailPage: React.FC = () => {
                       {product.dealTag}
                     </span>
                   )}
-                </div>
-
-                {/* Demo Data Label */}
-                <div className="absolute bottom-4 left-4">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white/90 backdrop-blur-xs text-espresso-700 border border-rose-100">
-                    AUTHENTIC CATALOG • INDIAN RETAILERS
-                  </span>
                 </div>
               </div>
 

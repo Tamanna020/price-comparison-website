@@ -190,10 +190,46 @@ def migrate_db(custom_path: str | None = None) -> None:
             if "data_status" not in existing_hist_cols:
                 cursor.execute("ALTER TABLE price_history ADD COLUMN data_status TEXT DEFAULT 'demo'")
 
+        # 2b. Check products table columns (Phase 14 Stage 2: Soft-archive non-beauty products)
+        db_engine = get_database_engine_type() if not custom_path else "sqlite"
+        if db_engine == "postgresql":
+            cursor.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE")
+            cursor.execute("UPDATE products SET is_active = FALSE WHERE id <= 11")
+            cursor.execute("UPDATE products SET is_active = FALSE WHERE id IN (998, 999)")
+            cursor.execute("UPDATE products SET is_active = TRUE WHERE id >= 12 AND id NOT IN (998, 999)")
+        else:
+            cursor.execute("PRAGMA table_info(products)")
+            existing_product_cols = {row["name"] for row in cursor.fetchall()}
+            if existing_product_cols:
+                if "is_active" not in existing_product_cols:
+                    cursor.execute("ALTER TABLE products ADD COLUMN is_active BOOLEAN DEFAULT 1")
+                cursor.execute("UPDATE products SET is_active = 0 WHERE id <= 11 OR id IN (998, 999)")
+                cursor.execute("UPDATE products SET is_active = 1 WHERE id >= 12 AND id NOT IN (998, 999)")
+
+        # 2c. Image Provenance & Verification Columns (Phase 14 Stage 3)
+        if db_engine == "postgresql":
+            cursor.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_source_url TEXT")
+            cursor.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_source_name TEXT")
+            cursor.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_status TEXT DEFAULT 'placeholder'")
+            cursor.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_last_checked TIMESTAMP")
+        else:
+            cursor.execute("PRAGMA table_info(products)")
+            existing_product_cols = {row["name"] for row in cursor.fetchall()}
+            if existing_product_cols:
+                if "image_source_url" not in existing_product_cols:
+                    cursor.execute("ALTER TABLE products ADD COLUMN image_source_url TEXT")
+                if "image_source_name" not in existing_product_cols:
+                    cursor.execute("ALTER TABLE products ADD COLUMN image_source_name TEXT")
+                if "image_status" not in existing_product_cols:
+                    cursor.execute("ALTER TABLE products ADD COLUMN image_status TEXT DEFAULT 'placeholder'")
+                if "image_last_checked" not in existing_product_cols:
+                    cursor.execute("ALTER TABLE products ADD COLUMN image_last_checked TIMESTAMP")
+
         # 3. Ensure indexes exist
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='products'")
         if cursor.fetchone():
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_brand ON products(brand)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_is_active ON products(is_active)")
 
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='price_history'")
         if cursor.fetchone():

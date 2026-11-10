@@ -49,6 +49,11 @@ class ProductListItemSchema(BaseModel):
     currency_symbol: str = "₹"
     available_offer_count: int = 0
     specs: dict[str, Any] = Field(default_factory=dict)
+    is_active: bool = True
+    image_source_url: Optional[str] = None
+    image_source_name: Optional[str] = None
+    image_status: str = "placeholder"
+    image_last_checked: Optional[str] = None
 
 
 class ProductDetailSchema(ProductListItemSchema):

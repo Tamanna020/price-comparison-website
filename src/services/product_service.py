@@ -2,7 +2,7 @@
 
 import json
 from typing import Optional
-from src.database.connection import get_connection
+from src.database.connection import get_connection, get_database_engine_type
 from src.database.models import Offer, PricePoint, Product
 
 
@@ -15,26 +15,31 @@ def parse_specs(specs_raw: Optional[str]) -> dict:
         return {}
 
 
-def get_all_categories(custom_path: Optional[str] = None) -> list[str]:
+def get_all_categories(custom_path: Optional[str] = None, active_only: bool = True) -> list[str]:
     """Retrieve distinct product categories."""
     with get_connection(custom_path) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT category FROM products ORDER BY category ASC")
+        engine = get_database_engine_type() if not custom_path else "sqlite"
+        active_cond = "WHERE (is_active IS NULL OR is_active = TRUE)" if engine == "postgresql" else "WHERE (is_active IS NULL OR is_active = 1)"
+        where_clause = active_cond if active_only else ""
+        cursor.execute(f"SELECT DISTINCT category FROM products {where_clause} ORDER BY category ASC")
         rows = cursor.fetchall()
-        return [r["category"] for r in rows]
+        return [r["category"] for r in rows if r["category"]]
 
 
-def get_all_brands(category: Optional[str] = None, custom_path: Optional[str] = None) -> list[str]:
+def get_all_brands(category: Optional[str] = None, custom_path: Optional[str] = None, active_only: bool = True) -> list[str]:
     """Retrieve distinct product brands, optionally filtered by category."""
     with get_connection(custom_path) as conn:
         cursor = conn.cursor()
+        engine = get_database_engine_type() if not custom_path else "sqlite"
+        active_cond = "(is_active IS NULL OR is_active = TRUE)" if engine == "postgresql" else "(is_active IS NULL OR is_active = 1)"
+        where_parts = [active_cond] if active_only else []
+        params = []
         if category and category != "All":
-            cursor.execute(
-                "SELECT DISTINCT brand FROM products WHERE category = ? ORDER BY brand ASC",
-                (category,),
-            )
-        else:
-            cursor.execute("SELECT DISTINCT brand FROM products ORDER BY brand ASC")
+            where_parts.append("category = ?")
+            params.append(category)
+        where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+        cursor.execute(f"SELECT DISTINCT brand FROM products {where_clause} ORDER BY brand ASC", params)
         rows = cursor.fetchall()
         return [r["brand"] for r in rows if r["brand"]]
 
@@ -92,6 +97,7 @@ def get_products(
     skin_type: Optional[str] = None,
     product_type: Optional[str] = None,
     custom_path: Optional[str] = None,
+    active_only: bool = True,
 ) -> list[Product]:
     """
     Search and filter products with summary offer information.
@@ -100,13 +106,15 @@ def get_products(
     """
     with get_connection(custom_path) as conn:
         cursor = conn.cursor()
+        engine = get_database_engine_type() if not custom_path else "sqlite"
+        active_cond = "(p.is_active IS NULL OR p.is_active = TRUE)" if engine == "postgresql" else "(p.is_active IS NULL OR p.is_active = 1)"
 
-        sql = """
+        sql = f"""
             SELECT 
                 p.id, p.sku, p.title, p.brand, p.category, p.description, 
-                p.specs_json, p.image_url, p.created_at
+                p.specs_json, p.image_url, p.created_at, p.is_active
             FROM products p
-            WHERE 1=1
+            WHERE {'(' + active_cond + ')' if active_only else '1=1'}
         """
         params: list = []
 
@@ -226,6 +234,7 @@ def get_products(
                 specs=parse_specs(prow["specs_json"]),
                 image_url=prow["image_url"] or "",
                 created_at=str(prow["created_at"]),
+                is_active=bool(prow["is_active"]) if "is_active" in prow.keys() and prow["is_active"] is not None else True,
                 offers=offers,
             )
             products.append(prod)
@@ -273,7 +282,7 @@ def get_product_by_id(product_id: int, custom_path: Optional[str] = None) -> Opt
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT id, sku, title, brand, category, description, specs_json, image_url, created_at
+            SELECT id, sku, title, brand, category, description, specs_json, image_url, created_at, is_active
             FROM products
             WHERE id = ?
             """,
@@ -356,11 +365,12 @@ def get_product_by_id(product_id: int, custom_path: Optional[str] = None) -> Opt
             specs=parse_specs(prow["specs_json"]),
             image_url=prow["image_url"] or "",
             created_at=str(prow["created_at"]),
+            is_active=bool(prow["is_active"]) if "is_active" in prow.keys() and prow["is_active"] is not None else True,
             offers=offers,
         )
 
 
-def get_product_by_slug(slug: str, custom_path: Optional[str] = None) -> Optional[Product]:
+def get_product_by_slug(slug: str, custom_path: Optional[str] = None, active_only: bool = True) -> Optional[Product]:
     """
     Retrieve product by URL-friendly slug, SKU, or numeric ID string.
     Returns None if no matching product is found (for clean 404 handling).
@@ -374,6 +384,8 @@ def get_product_by_slug(slug: str, custom_path: Optional[str] = None) -> Optiona
     if clean_slug.isdigit():
         prod = get_product_by_id(int(clean_slug), custom_path=custom_path)
         if prod:
+            if active_only and not prod.is_active:
+                return None
             return prod
 
     # 2. Check SKU match
@@ -382,11 +394,14 @@ def get_product_by_slug(slug: str, custom_path: Optional[str] = None) -> Optiona
         cursor.execute("SELECT id FROM products WHERE LOWER(sku) = ?", (clean_slug,))
         row = cursor.fetchone()
         if row:
-            return get_product_by_id(row["id"], custom_path=custom_path)
+            p = get_product_by_id(row["id"], custom_path=custom_path)
+            if p and active_only and not p.is_active:
+                return None
+            return p
 
     # 3. Match against computed product slug or title slug
     import re
-    all_products = get_products(custom_path=custom_path)
+    all_products = get_products(custom_path=custom_path, active_only=active_only)
     for p in all_products:
         if p.slug == clean_slug or p.sku.lower() == clean_slug:
             return get_product_by_id(p.id, custom_path=custom_path)

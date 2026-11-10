@@ -14,7 +14,7 @@ interface ProductCardProps {
 }
 
 // Resilient SVG fallback image in Warm Ivory & Dusty Rose
-const FALLBACK_BEAUTY_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400"><rect width="400" height="400" fill="%23FAF7F2"/><circle cx="200" cy="180" r="70" fill="%23F3E4E6" stroke="%23C98991" stroke-width="2"/><path d="M170 230 C170 230, 200 270, 230 230" fill="none" stroke="%23C98991" stroke-width="2.5"/><text x="200" y="320" font-family="serif" font-size="20" fill="%23302724" text-anchor="middle" font-weight="bold">PRICEWISE BEAUTY</text><text x="200" y="345" font-family="sans-serif" font-size="12" fill="%239E948F" text-anchor="middle">DEMO PRODUCT IMAGE</text></svg>`;
+import { ProductImage } from './ProductImage';
 
 export const ProductCard: React.FC<ProductCardProps> = ({
   product,
@@ -24,8 +24,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   onComparePrices,
   onViewAlternative,
 }) => {
-  const [imgSrc, setImgSrc] = useState(product.image);
-
   // Find lowest price store
   const lowestOffer = product.storeOffers.reduce((min, o) => (o.price < min.price ? o : min), product.storeOffers[0]);
   const savingsAmount = product.originalPrice ? product.originalPrice - product.price : 0;
@@ -44,12 +42,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       {/* Top Media Area */}
       <div className="relative aspect-4/3 w-full bg-ivory-100 overflow-hidden">
         <Link to={productUrl} className="block w-full h-full">
-          <img
-            src={imgSrc}
+          <ProductImage
+            src={product.image}
             alt={product.name}
-            onError={() => setImgSrc(FALLBACK_BEAUTY_SVG)}
-            className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
-            loading="lazy"
+            brand={product.brand}
+            category={product.category}
+            status={product.imageStatus || 'placeholder'}
+            className="w-full h-full group-hover:scale-105 transition-transform duration-500"
           />
         </Link>
 

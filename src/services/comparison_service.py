@@ -4,8 +4,10 @@ and safe handling of unavailable offers, single-store comparisons, and edge case
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
-import pandas as pd
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 from src.database.models import Offer, Product
 
 
@@ -224,7 +226,7 @@ def build_price_history_dataframe(
     product: Product,
     window: str = "all",
     reference_date: Optional[object] = None,
-) -> pd.DataFrame:
+) -> Any:
     """
     Consolidates historical price data across all stores for time-series visualization.
     Supports time windows ('30d', '90d', 'all') based on real observation timestamps.

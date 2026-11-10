@@ -485,6 +485,8 @@ def _serialize_product_item(product: Product) -> ProductListItemSchema:
 
         specs=product.specs or {},
 
+        is_active=getattr(product, "is_active", True),
+
     )
 
 
@@ -657,7 +659,7 @@ def get_product(slug_or_id: str) -> ProductDetailSchema:
 
 
 
-    if not prod:
+    if not prod or not getattr(prod, "is_active", True):
 
         raise HTTPException(
 

@@ -6,6 +6,7 @@ export const PRODUCTS_DATA: Product[] = [
   // -------------------------------------------------------------
   {
     id: 'prod-01',
+    dbId: 12,
     slug: 'watermelon-cooling-sunscreen-spf-50',
     name: 'Watermelon Cooling Sunscreen SPF 50+ PA++++',
     brand: 'Dot & Key',
@@ -142,6 +143,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-02',
+    dbId: 13,
     name: '1% Hyaluronic Sunscreen Aqua Gel SPF 50 PA++++',
     brand: 'The Derma Co',
     brandTier: 'Affordable',
@@ -180,6 +182,7 @@ export const PRODUCTS_DATA: Product[] = [
   // -------------------------------------------------------------
   {
     id: 'prod-03',
+    dbId: 14,
     name: '10% Niacinamide Face Serum with Zinc PCA',
     brand: 'Minimalist',
     brandTier: 'Affordable',
@@ -218,6 +221,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-04',
+    dbId: 16,
     name: 'Advanced Snail 96 Mucin Power Essence',
     brand: 'COSRX',
     brandTier: 'Premium',
@@ -256,6 +260,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-05',
+    dbId: 15,
     name: 'Kumkumadi Miraculous Beauty Ayurvedic Night Serum',
     brand: 'Kama Ayurveda',
     brandTier: 'Luxury',
@@ -294,6 +299,7 @@ export const PRODUCTS_DATA: Product[] = [
   // -------------------------------------------------------------
   {
     id: 'prod-06',
+    dbId: 20,
     slug: 'ceramide-moisturizer',
     name: 'Barrier Repair Ceramides & Hyaluronic Moisturizer',
     brand: 'Dot & Key',
@@ -415,6 +421,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-07',
+    dbId: 18,
     name: 'Soundarya Radiance Cream with 24K Gold & SPF 25',
     brand: 'Forest Essentials',
     brandTier: 'Luxury',
@@ -449,6 +456,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-08',
+    dbId: 19,
     name: 'Moisture Surge 100H Auto-Replenishing Hydrator',
     brand: 'Clinique',
     brandTier: 'Luxury',
@@ -488,6 +496,7 @@ export const PRODUCTS_DATA: Product[] = [
   // -------------------------------------------------------------
   {
     id: 'prod-09',
+    dbId: 17,
     name: 'Gentle Skin Cleanser for Dry to Normal Sensitive Skin',
     brand: 'Cetaphil',
     brandTier: 'Drugstore',
@@ -523,6 +532,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-10',
+    dbId: 21,
     name: 'Clear Face Cleansing Foam with pH 5.5',
     brand: 'Sebamed',
     brandTier: 'Drugstore',
@@ -560,6 +570,7 @@ export const PRODUCTS_DATA: Product[] = [
   // -------------------------------------------------------------
   {
     id: 'prod-11',
+    dbId: 25,
     name: 'Green Tea Alcohol-Free Toner with Glycolic Acid',
     brand: 'Plum',
     brandTier: 'Affordable',
@@ -595,6 +606,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-12',
+    dbId: 28,
     name: 'Lip Sleeping Mask - Berry',
     brand: 'Laneige',
     brandTier: 'Premium',
@@ -633,6 +645,7 @@ export const PRODUCTS_DATA: Product[] = [
   // -------------------------------------------------------------
   {
     id: 'prod-13',
+    dbId: 23,
     name: 'Fit Me Matte + Poreless Liquid Foundation',
     brand: 'Maybelline New York',
     brandTier: 'Drugstore',
@@ -669,6 +682,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-14',
+    dbId: 1054,
     name: 'Studio Fix Fluid SPF 15 24HR Matte Foundation',
     brand: 'M.A.C Cosmetics',
     brandTier: 'Luxury',
@@ -703,6 +717,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-15',
+    dbId: 26,
     name: 'Hollywood Flawless Filter Complexion Booster',
     brand: 'Charlotte Tilbury',
     brandTier: 'Luxury',
@@ -737,6 +752,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-16',
+    dbId: 1072,
     name: 'Instant Age Rewind Eraser Multi-Use Concealer',
     brand: 'Maybelline New York',
     brandTier: 'Drugstore',
@@ -776,6 +792,7 @@ export const PRODUCTS_DATA: Product[] = [
   // -------------------------------------------------------------
   {
     id: 'prod-17',
+    dbId: 22,
     name: 'Matteinee Matte Lipstick - Fulfill',
     brand: 'Kay Beauty',
     brandTier: 'Premium',
@@ -810,6 +827,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-18',
+    dbId: 24,
     name: 'Soft Pinch Liquid Blush - Encourage',
     brand: 'Rare Beauty',
     brandTier: 'Luxury',
@@ -844,6 +862,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-19',
+    dbId: 27,
     name: 'Ultra Blush Palette - 8 Shades',
     brand: 'Swiss Beauty',
     brandTier: 'Drugstore',
@@ -879,6 +898,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-20',
+    dbId: 29,
     name: 'Nude Obsessions Eyeshadow Palette - Medium',
     brand: 'Huda Beauty',
     brandTier: 'Luxury',
@@ -913,6 +933,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-21',
+    dbId: 30,
     name: 'Kind to Skin Micellar Cleansing Water',
     brand: 'Simple',
     brandTier: 'Affordable',
@@ -950,6 +971,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-22',
+    dbId: 31,
     name: 'Maleic Bond Repair Complex 5% Hair Serum',
     brand: 'Minimalist',
     brandTier: 'Affordable',
@@ -986,6 +1008,7 @@ export const PRODUCTS_DATA: Product[] = [
   },
   {
     id: 'prod-23',
+    dbId: 32,
     name: 'Exfoliating 2% Lactic Acid Body Wash with Ceramides',
     brand: 'Chemist at Play',
     brandTier: 'Affordable',
