@@ -128,6 +128,7 @@ export interface Product {
   rating?: number;
   reviewCount?: number;
   image: string;
+  imageStatus?: 'verified_exact' | 'permission_review' | 'unverified' | 'placeholder';
   description: string;
   skinType?: string; // For skincare (e.g. "Oily, Combination, Acne-Prone")
   finish?: string; // For makeup (e.g. "Matte, Luminous, Dewy")
